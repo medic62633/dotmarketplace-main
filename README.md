@@ -149,6 +149,51 @@ the host periodically (Atlas also has its own continuous backup — this is
 the fast local recovery path for accidental data loss the app itself causes,
 e.g. a bad admin action, not a substitute for Atlas's backups).
 
+## Reliability & outages
+
+`GET /healthz` actively pings the database on every call (not just checking
+"did we connect once at boot") — `{"ok":true,"db":"mongo"}` means the ping
+just succeeded, `{"ok":false,...}` (HTTP 503) means it just failed. Point an
+uptime monitor / PM2 healthcheck at this. A mid-session heartbeat failure or
+recovery is also logged directly (`⚠ MongoDB heartbeat failed...` /
+`✓ MongoDB heartbeat recovered`) independent of traffic, so an outage shows
+up in the logs the moment it starts rather than whenever a request happens
+to hit it.
+
+**If you're seeing repeated "failed to connect, fell back to memory, lost
+data"**, check in this order:
+
+1. **`ALLOW_MEMORY_STORE` in your actual production process** (PM2/systemd
+   env, not just the `.env` file) — if it's `true`, that's almost certainly
+   the cause; `validateEnv()` now refuses to boot with it set alongside
+   `NODE_ENV=production` (previously it silently won). Remove it.
+2. **Atlas free tier (M0)**: an M0 cluster is a single node with no replica-
+   set failover, and Atlas auto-pauses an M0 cluster after a period of
+   inactivity — the next connection has to wait for it to resume, which can
+   exceed a short timeout and looks exactly like "randomly fails to
+   connect." If you're on M0, either upgrade to a dedicated/serverless tier
+   (real replica set, no auto-pause — this is also what makes the
+   transaction-wrapped money paths in `lib/seller-store.js` actually run
+   transactionally instead of falling back) or keep something hitting the
+   cluster periodically so it never pauses.
+3. **Atlas Network Access**: if your VPS's IP changed (common on cheap/burst
+   VPS providers) and isn't on the allowlist, every connection attempt fails
+   the TLS handshake. `npm run db:check` prints your current outbound IP
+   when this is the cause.
+
+**If Atlas is genuinely down and you need to get back up fast**: point
+`MONGODB_URI` at a local `npm run db:up` Mongo (also a replica set — money
+paths stay transactional) and `npm run db:restore` your most recent backup
+into it. This is a stopgap to get the app serving again, not a permanent
+fix — switch back to Atlas once it recovers, and reconcile whatever wrote
+during the gap.
+
+`npm run db:verify` exercises the transaction and schema-validation
+machinery (commit, abort-leaves-no-partial-write, and JSON Schema
+accept/reject) against your real `MONGODB_URI` on a disposable scratch
+collection — safe to run against production, it never touches the app's
+real collections. Worth running once after any Mongo version/tier change.
+
 ## Architecture notes
 
 - **Auth**: bearer tokens (no cookies/sessions), rotated on every signin,
