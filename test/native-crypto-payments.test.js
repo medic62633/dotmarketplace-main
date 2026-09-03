@@ -14,7 +14,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startServer } = require('./helpers/server');
-const { adminToken } = require('./helpers/fixtures');
+const { adminToken, verifiedSeller, listing } = require('./helpers/fixtures');
 
 function fakeAddress(prefix, n) {
   const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -24,19 +24,27 @@ function fakeAddress(prefix, n) {
   return s;
 }
 
+// BTC/LTC/native SOL are not USD-pegged, so lib/payments/fx.js converts the
+// USDT top-up amount to a coin amount via a live CoinGecko lookup — no
+// outbound access to that from this environment, so these three pin a fixed
+// rate via NATIVE_{BTC,LTC,SOL}_USD_RATE (see fx.js) instead, and assert the
+// conversion math itself. Every USDT-denominated network (decimals: 2, no
+// usdRate below) skips conversion entirely — 1 USDT already = 1 to send.
 const NETWORKS = [
-  { provider: 'native_tron', network: 'tron-usdt-trc20', addrPrefix: 'T' },
-  { provider: 'native_eth', network: 'eth-usdt-erc20', addrPrefix: '0x' },
-  { provider: 'native_bsc', network: 'bsc-usdt-bep20', addrPrefix: '0x' },
-  { provider: 'native_sol', network: 'sol-native', addrPrefix: '' },
-  { provider: 'native_sol_usdt', network: 'sol-usdt-spl', addrPrefix: '' },
-  { provider: 'native_btc', network: 'btc', addrPrefix: 'bc1q' },
-  { provider: 'native_ltc', network: 'ltc', addrPrefix: 'ltc1q' },
+  { provider: 'native_tron', network: 'tron-usdt-trc20', addrPrefix: 'T', decimals: 2 },
+  { provider: 'native_eth', network: 'eth-usdt-erc20', addrPrefix: '0x', decimals: 2 },
+  { provider: 'native_bsc', network: 'bsc-usdt-bep20', addrPrefix: '0x', decimals: 2 },
+  { provider: 'native_sol', network: 'sol-native', addrPrefix: '', decimals: 6, usdRate: 150 },
+  { provider: 'native_sol_usdt', network: 'sol-usdt-spl', addrPrefix: '', decimals: 2 },
+  { provider: 'native_btc', network: 'btc', addrPrefix: 'bc1q', decimals: 8, usdRate: 65000 },
+  { provider: 'native_ltc', network: 'ltc', addrPrefix: 'ltc1q', decimals: 8, usdRate: 80 },
 ];
 
-for (const { provider, network, addrPrefix } of NETWORKS) {
+for (const { provider, network, addrPrefix, decimals, usdRate } of NETWORKS) {
   test(`${provider}: admin can pool addresses, wallet top-up claims one per order, and the pool exhausts loudly`, async (t) => {
-    const srv = await startServer({ PAYMENT_PROVIDER: provider, OXAPAY_MERCHANT_API_KEY: '', OXAPAY_API_KEY: '' });
+    const symbol = provider.replace('native_', '').toUpperCase();
+    const envOverride = usdRate ? { [`NATIVE_${symbol}_USD_RATE`]: String(usdRate) } : {};
+    const srv = await startServer({ PAYMENT_PROVIDER: provider, ...envOverride });
     t.after(() => srv.stop());
     const { api } = srv;
 
@@ -62,6 +70,19 @@ for (const { provider, network, addrPrefix } of NETWORKS) {
     assert.equal(top1.status, 200, JSON.stringify(top1.json));
     assert.equal(top1.json.sandbox, false, 'a native on-chain deposit is never "sandbox" — it is always real');
     assert.ok([addr1, addr2].includes(top1.json.payAddress), 'claimed address comes from the pool');
+    assert.equal(top1.json.payDecimals, decimals);
+    if (usdRate) {
+      // Not USD-pegged (BTC/LTC/native SOL): payAmount must be the $25
+      // converted at the pinned rate, not the raw dollar figure — asking a
+      // buyer to send "25" units of a coin worth $65,000 each was the bug
+      // this conversion exists to fix.
+      const expected = Math.round((25 / usdRate) * 10 ** decimals) / 10 ** decimals;
+      assert.equal(top1.json.payAmount, expected, 'USDT amount converted to the coin at the configured rate');
+      assert.equal(top1.json.payAmountUsd, 25, 'original USD figure preserved for display');
+      assert.notEqual(top1.json.payAmount, 25, 'never sends the raw USD figure as if it were coin units');
+    } else {
+      assert.equal(top1.json.payAmount, 25, 'USDT-denominated chain: 1 USDT = 1 to send, no conversion');
+    }
 
     const top2 = await api('POST', '/api/wallet/topup', { token: buyerTok, body: { amount: 25 } });
     assert.equal(top2.status, 200, JSON.stringify(top2.json));
@@ -80,7 +101,7 @@ for (const { provider, network, addrPrefix } of NETWORKS) {
 }
 
 test('the admin crypto-address pool API is admin-only', async (t) => {
-  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron', OXAPAY_MERCHANT_API_KEY: '', OXAPAY_API_KEY: '' });
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron' });
   t.after(() => srv.stop());
   const { api } = srv;
 
@@ -97,7 +118,7 @@ test('the admin crypto-address pool API is admin-only', async (t) => {
 });
 
 test('adding addresses to an unsupported network is rejected', async (t) => {
-  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron', OXAPAY_MERCHANT_API_KEY: '', OXAPAY_API_KEY: '' });
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron' });
   t.after(() => srv.stop());
   const { api } = srv;
   const admin = await adminToken(api);
@@ -106,4 +127,54 @@ test('adding addresses to an unsupported network is rejected', async (t) => {
     body: { network: 'dogecoin', addresses: fakeAddress('D', 1) },
   });
   assert.equal(res.status, 400);
+});
+
+test('escrow checkout on a non-USD-pegged native chain also converts the listing price (not just wallet top-up)', async (t) => {
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_btc', NATIVE_BTC_USD_RATE: '65000' });
+  t.after(() => srv.stop());
+  const { api } = srv;
+
+  const admin = await adminToken(api);
+  const addr = fakeAddress('bc1q', 1);
+  await api('POST', '/api/admin/crypto-addresses', { token: admin, body: { network: 'btc', addresses: addr } });
+
+  const sellerTok = await verifiedSeller(api, admin, 'seller-btc@example.com', 'Seller');
+  const item = await listing(api, sellerTok, { price: 130 }); // $130 at $65,000/BTC = 0.002 BTC
+
+  await api('POST', '/api/auth/signup', { body: { email: 'buyer-btc@example.com', password: 'test12345', name: 'Buyer' } });
+  const signin = await api('POST', '/api/auth/signin', { body: { email: 'buyer-btc@example.com', password: 'test12345' } });
+  const buyerTok = signin.json.token;
+
+  const orderId = 'ORD-' + Date.now();
+  const res = await api('POST', '/api/payments/escrow', {
+    token: buyerTok,
+    body: { orderId, listingId: item.id, method: 'crypto' },
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.equal(res.json.payment.payAddress, addr);
+  assert.equal(res.json.payment.payAmount, 0.002, '$130 at $65,000/BTC converts to 0.002 BTC, not "130" BTC');
+  assert.equal(res.json.payment.payAmountUsd, 130);
+});
+
+test('checkout on a non-USD-pegged native chain fails loudly (never falls back to a 1:1 amount) when no exchange rate is available', async (t) => {
+  // No NATIVE_BTC_USD_RATE override, and NATIVE_FX_API_BASE points at a
+  // guaranteed-unreachable address (nothing listens on 127.0.0.1:1) so the
+  // live CoinGecko fetch fails deterministically everywhere — this sandbox
+  // has no outbound network access at all, but a real CI runner typically
+  // does, so "no network access" can't be what this test relies on to force
+  // the failure path it's asserting against: fail the checkout, don't
+  // silently quote 20 BTC for a $20 top-up.
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_btc', NATIVE_FX_API_BASE: 'http://127.0.0.1:1' });
+  t.after(() => srv.stop());
+  const { api } = srv;
+
+  const admin = await adminToken(api);
+  await api('POST', '/api/admin/crypto-addresses', { token: admin, body: { network: 'btc', addresses: fakeAddress('bc1q', 2) } });
+
+  await api('POST', '/api/auth/signup', { body: { email: 'buyer-btc2@example.com', password: 'test12345', name: 'Buyer' } });
+  const signin = await api('POST', '/api/auth/signin', { body: { email: 'buyer-btc2@example.com', password: 'test12345' } });
+
+  const res = await api('POST', '/api/wallet/topup', { token: signin.json.token, body: { amount: 20 } });
+  assert.notEqual(res.status, 200, 'checkout must fail rather than silently mint an invoice with the wrong amount');
+  assert.doesNotMatch(JSON.stringify(res.json), /"payAmount":\s*20\b/, 'never returns the raw USD figure as a BTC amount');
 });

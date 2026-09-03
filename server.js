@@ -284,7 +284,6 @@ function validateEnv() {
     if (!process.env.PUBLIC_URL || /localhost|127\.0\.0\.1/.test(process.env.PUBLIC_URL)) {
       warnings.push('PUBLIC_URL should be the public https origin in production.');
     }
-    if (process.env.OXAPAY_SANDBOX !== 'false') warnings.push('OXAPAY_SANDBOX should be "false" for live payments.');
     if (!process.env.STOCK_SECRET) {
       problems.push('STOCK_SECRET is required in production to encrypt credential stock at rest.');
     }
@@ -292,8 +291,9 @@ function validateEnv() {
   if (process.env.TRUST_PROXY === 'true') {
     warnings.push('TRUST_PROXY=true — ensure your reverse proxy overwrites X-Forwarded-For, otherwise IP allowlists and rate limiting can be spoofed.');
   }
-  if (process.env.PAYMENT_PROVIDER !== 'cryptomus' && !process.env.OXAPAY_MERCHANT_API_KEY && !process.env.OXAPAY_API_KEY) {
-    warnings.push('No OxaPay key — crypto checkout disabled (wallet-only mode).');
+  const nativeProviderKeys = ['native_tron', 'native_eth', 'native_bsc', 'native_sol', 'native_sol_usdt', 'native_btc', 'native_ltc'];
+  if (!nativeProviderKeys.includes((process.env.PAYMENT_PROVIDER || '').toLowerCase())) {
+    warnings.push('No PAYMENT_PROVIDER set — crypto checkout disabled (wallet-only mode). See README "Native crypto payments".');
   }
   if (warnings.length) warnings.forEach(w => console.warn('   ⚠ config: ' + w));
   if (problems.length) {

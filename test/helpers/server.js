@@ -8,7 +8,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
-async function waitForHealth(baseUrl, timeoutMs = 8000) {
+// node --test runs multiple test files concurrently by default, each
+// spawning its own real server.js child process — on a loaded/throttled CI
+// runner, enough of them booting at once can push a cold Node start (dotenv,
+// scrypt-hashing the bootstrap admin password, in-memory store setup) past a
+// tight timeout even though nothing is actually broken. 15s gives real
+// headroom without masking a genuinely hung/crashed server.
+async function waitForHealth(baseUrl, timeoutMs = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
