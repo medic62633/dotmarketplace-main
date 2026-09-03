@@ -467,21 +467,17 @@ function renderTopSellers() {
 /* ================= fees ================= */
 let FEES = {
   platformFeePercent: 2.5,
-  gatewayFeePercent: 0.5,
-  provider: 'oxapay',
-  gatewayFeePaidBy: 'buyer',
-  buyerPaysGatewayFee: true,
+  gatewayFeePercent: 0,
+  provider: '',
+  gatewayFeePaidBy: null,
+  buyerPaysGatewayFee: false,
 };
-let PAY_CFG = { configured: false, sandbox: true, provider: 'oxapay' };
+let PAY_CFG = { configured: false, sandbox: false, provider: '' };
 
+// Crypto checkout runs on whichever single native chain the server has
+// configured (PAYMENT_PROVIDER) — there is no buyer-facing network choice.
 function isCryptoPayMethod(method) {
-  return method === 'trc20' || method === 'ton' || method === 'bep20';
-}
-
-function gatewayLabel() {
-  const p = (FEES.provider || 'oxapay').toLowerCase();
-  if (p === 'cryptomus') return 'Cryptomus';
-  return 'OxaPay';
+  return method === 'crypto';
 }
 
 function calcLocalFees(listingAmount, method = 'wallet') {
@@ -489,28 +485,13 @@ function calcLocalFees(listingAmount, method = 'wallet') {
   const pf = (FEES.platformFeePercent || 2.5) / 100;
   const platformFee = Math.round(listing * pf * 100) / 100;
   const sellerNet = Math.round((listing - platformFee) * 100) / 100;
-  if (method === 'wallet') {
-    return {
-      listingAmount: listing,
-      amount: listing,
-      buyerTotal: listing,
-      platformFee,
-      gatewayFee: 0,
-      gatewayFeePercent: 0,
-      sellerNet,
-      platformFeePercent: FEES.platformFeePercent,
-    };
-  }
-  const gf = (FEES.gatewayFeePercent || 0.5) / 100;
-  const gatewayFee = Math.round(listing * gf * 100) / 100;
-  const buyerTotal = Math.round((listing + gatewayFee) * 100) / 100;
   return {
     listingAmount: listing,
     amount: listing,
-    buyerTotal,
+    buyerTotal: listing,
     platformFee,
-    gatewayFee,
-    gatewayFeePercent: FEES.gatewayFeePercent,
+    gatewayFee: 0,
+    gatewayFeePercent: 0,
     sellerNet,
     platformFeePercent: FEES.platformFeePercent,
   };
@@ -518,11 +499,10 @@ function calcLocalFees(listingAmount, method = 'wallet') {
 
 function paintFeeLabels() {
   const pct = FEES.platformFeePercent ?? 2.5;
-  const gw = FEES.gatewayFeePercent ?? 0.5;
   const el = $('#escrowFeePct');
   if (el) el.textContent = pct + '% of the deal';
   const gwEl = $('#escrowGatewayFee');
-  if (gwEl) gwEl.textContent = gw + '% · paid by buyer at checkout';
+  if (gwEl) gwEl.textContent = 'No processing fee — paid directly to the seller\'s wallet';
 }
 
 async function loadFeeConfig() {
@@ -575,7 +555,6 @@ function openListing(id) {
   function priceBlockHtml() {
     const price = selected ? selected.price : l.price;
     const fees = calcLocalFees(price);
-    const cryptoFees = calcLocalFees(price, 'trc20');
     const picker = hasVariants ? `
       <div class="variant-picker" role="group" aria-label="Choose a price option">
         ${l.variants.map(v => `
@@ -588,13 +567,11 @@ function openListing(id) {
       <div class="sheet-price"><span class="p mono">${fmt(price)}</span><span class="c">USDT</span></div>
       <div class="fees">
         <div class="fee-row"><span class="k">Item price</span><span class="mono">${fmt(price)} USDT</span></div>
-        <div class="fee-row"><span class="k">${gatewayLabel()} fee (crypto)</span><span class="mono">${cryptoFees.gatewayFeePercent}% · ${fmt(cryptoFees.gatewayFee)} USDT</span></div>
-        <div class="fee-row total"><span class="k">You pay (crypto)</span><span class="mono">${fmt(cryptoFees.buyerTotal)} USDT</span></div>
-        <div class="fee-row"><span class="k">You pay (Dot Wallet)</span><span class="mono">${fmt(fees.buyerTotal)} USDT</span></div>
+        <div class="fee-row total"><span class="k">You pay</span><span class="mono">${fmt(fees.buyerTotal)} USDT</span></div>
       </div>
       <p class="fee-note">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V5.8L12 3Z"/><path d="m9 11.6 2.2 2.2L15.4 9.6"/></svg>
-        Crypto payments include a ${cryptoFees.gatewayFeePercent}% ${gatewayLabel()} processing fee paid by you. Dot Wallet payments have no added processing fee.
+        No added processing fee, whether you pay with Dot Wallet or crypto.
       </p>`;
   }
 
@@ -675,11 +652,11 @@ function buy(id, variantId) {
 /* ================= payment ================= */
 let payCtx = null;
 
+// The server accepts exactly one crypto network at a time (whatever
+// PAYMENT_PROVIDER selects) — there is no buyer-facing network picker.
 const PAY_METHODS = [
   { id: 'wallet', label: 'Dot Wallet', desc: 'Pay from your USDT balance', badge: 'Instant', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h.01"/></svg>' },
-  { id: 'trc20', label: 'USDT · TRC-20', desc: 'Tron network — low fees, ~2 min', badge: '~2 min', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>' },
-  { id: 'bep20', label: 'USDT · BEP-20', desc: 'BNB Smart Chain — fast & cheap', badge: '~1 min', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 3-3 3-3-3 3-3Zm-6 6 3 3-3 3-3-3 3-3Zm12 0 3 3-3 3-3-3 3-3Zm-6 6 3 3-3 3-3-3 3-3Z"/></svg>' },
-  { id: 'ton', label: 'TON', desc: 'Pay via Telegram / TON wallet', badge: '~1 min', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2 20 7v10l-8 5-8-5V7l8-5Z"/><path d="m12 12 8-5M12 12v10M12 12 4 7"/></svg>' },
+  { id: 'crypto', label: 'Pay with crypto', desc: 'Send directly on-chain to the seller\'s escrow address', badge: '', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>' },
 ];
 
 const PAY_METHOD_LABELS = Object.fromEntries(PAY_METHODS.map(m => [m.id, m.label]));
@@ -722,7 +699,7 @@ function openPaymentModal({ listingId, dealId, variantId }) {
     : null;
 
   const amount = deal?.amt ?? (variant ? variant.price : listing?.price);
-  let method = BAL >= amount ? 'wallet' : 'trc20';
+  let method = BAL >= amount ? 'wallet' : 'crypto';
   if (isCryptoPayMethod(method) && !PAY_CFG.configured) method = 'wallet';
 
   payCtx = {
@@ -761,12 +738,11 @@ function renderPaymentModal() {
   const payTotal = fees.buyerTotal;
   const feeRows = isCrypto ? `
       <div class="row"><span>Item price</span><span class="mono">${fmt(fees.listingAmount)} USDT</span></div>
-      <div class="row"><span>${esc(gatewayLabel())} processing fee</span><span class="mono">${fees.gatewayFeePercent}% · ${fmt(fees.gatewayFee)} USDT</span></div>
       <div class="row"><span>Escrow amount</span><span class="mono">${fmt(fees.listingAmount)} USDT</span></div>
       <div class="row"><span>Seller receives</span><span class="mono">${fmt(fees.sellerNet)} USDT</span></div>
       <p class="muted" style="font-size:12px;margin-top:8px">${fees.platformFeePercent}% platform fee (${fmt(fees.platformFee)} USDT) is deducted from the seller when you confirm delivery.</p>` : '';
   const cryptoNotice = !PAY_CFG.configured
-    ? `<p class="pay-notice">External crypto checkout is unavailable on this server. Use <b>Dot Wallet</b> or ask the admin to set <span class="mono">OXAPAY_MERCHANT_API_KEY</span> in <span class="mono">.env</span> and restart.</p>`
+    ? `<p class="pay-notice">Crypto checkout is unavailable on this server. Use <b>Dot Wallet</b>, or ask the admin to configure <span class="mono">PAYMENT_PROVIDER</span> in <span class="mono">.env</span> and restart.</p>`
     : '';
   const methodsHtml = PAY_METHODS.map(m => {
     const disabled = isCryptoPayMethod(m.id) && !PAY_CFG.configured;
@@ -854,7 +830,7 @@ async function confirmPayment() {
         // A pending crypto invoice already exists for this deal. Re-open the
         // crypto checkout flow so the buyer completes it instead of paying twice.
         toast('This deal already has a pending crypto payment — complete it below', 'info');
-        c.method = c.method === 'wallet' ? 'trc20' : c.method;
+        c.method = c.method === 'wallet' ? 'crypto' : c.method;
         await processCryptoPayment(c, btn);
         return;
       }
@@ -951,12 +927,11 @@ function renderCryptoPaymentPending(c, payment, deal, sandbox, onPaid) {
     <div class="pay-crypto-pending">
       <div class="pay-summary" style="text-align:left">
         <div class="row"><span>Item price</span><span class="mono">${fmt(fees.listingAmount)} USDT</span></div>
-        <div class="row"><span>${esc(gatewayLabel())} fee</span><span class="mono">${fmt(fees.gatewayFee)} USDT</span></div>
         <div class="row total"><span>Total due</span><span class="mono">${fmt(total)} USDT</span></div>
       </div>
       ${link}
       ${addr}
-      <p class="muted" style="font-size:13px">Complete payment on OxaPay — you can choose the network (TRC-20, BEP-20, etc.) there. We confirm automatically.</p>
+      <p class="muted" style="font-size:13px">Send the exact amount to the address above from your own wallet. We confirm automatically once the transfer is seen on-chain.</p>
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
         ${checkBtn}
       </div>
@@ -970,7 +945,7 @@ function renderCryptoPaymentPending(c, payment, deal, sandbox, onPaid) {
     if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
     const paid = await tryCompletePaid();
     if (!paid && statusEl) {
-      statusEl.textContent = 'Still waiting — complete payment on OxaPay, then check again.';
+      statusEl.textContent = 'Still waiting — send the payment, then check again.';
     }
     if (btn) { btn.disabled = false; btn.textContent = 'Check payment now'; }
   });
@@ -1560,7 +1535,6 @@ function openReceipt(deal) {
     : `<div class="row"><span>Buyer</span><span>${esc(deal.who)}</span></div>`;
   const feeRows = isCrypto ? `
       <div class="row"><span>Item price</span><span class="mono">${fmt(fees.listingAmount)} USDT</span></div>
-      <div class="row"><span>${esc(gatewayLabel())} fee</span><span class="mono">${fmt(fees.gatewayFee)} USDT</span></div>
       <div class="row total"><span>${isBuyer ? 'You paid' : 'Buyer paid'}</span><span class="mono">${fmt(buyerPaid)} USDT</span></div>
       <div class="row"><span>Escrow released</span><span class="mono">${fmt(fees.listingAmount)} USDT</span></div>
       <div class="row"><span>Platform fee (${fees.platformFeePercent}%)</span><span class="mono">${fmt(fees.platformFee)} USDT</span></div>
@@ -1879,7 +1853,7 @@ function renderTopupEntry(prefill) {
     <button class="pay-x" id="payClose" aria-label="Close">${CLOSE_X}</button>
     <div class="pay-head">
       <h3>Top up wallet</h3>
-      <p>Pay with crypto via OxaPay — credited after network confirmation.</p>
+      <p>Pay with crypto — credited after network confirmation.</p>
     </div>
     <div class="pay-summary">
       <label class="sf" style="display:block">
@@ -1931,15 +1905,19 @@ async function startTopup() {
 }
 
 function renderTopupPending(t) {
-  const link = t.payUrl
-    ? `<a class="btn btn-pri pay-link" href="${esc(t.payUrl)}" target="_blank" rel="noopener">Open OxaPay payment page</a>`
+  const addr = t.payAddress
+    ? `<p class="pay-addr">Send <span class="mono">${esc(t.amount)}</span> to<br><span class="mono">${esc(t.payAddress)}</span></p>`
     : '';
-  // No OxaPay key on this server: there's no real invoice to pay, so offer a
-  // local simulate button instead of a dead "Check payment now" that can
-  // never find a confirmation. The server only honors this when it already
-  // marked the record sandbox-eligible (dev/demo deployments only).
+  const link = t.payUrl
+    ? `<a class="btn btn-pri pay-link" href="${esc(t.payUrl)}" target="_blank" rel="noopener">Open payment page</a>`
+    : '';
+  // No crypto provider configured on this server: there's no real deposit
+  // address to pay, so offer a local simulate button instead of a dead
+  // "Check payment now" that can never find a confirmation. The server only
+  // honors this when it already marked the record sandbox-eligible
+  // (dev/demo deployments only).
   const notice = (t.sandbox && !t.configured)
-    ? `<p class="pay-notice">OxaPay isn't configured on this server — this is a simulated top-up for local development.</p>
+    ? `<p class="pay-notice">Crypto payments aren't configured on this server — this is a simulated top-up for local development.</p>
        <button class="btn btn-pri" id="topupSimulate" type="button">Simulate payment (dev)</button>`
     : '';
   $('#payCard').innerHTML = `
@@ -1949,8 +1927,9 @@ function renderTopupPending(t) {
       <p><span class="mono">${fmt(t.amount)}</span> USDT · order <span class="mono">${esc(t.orderId)}</span></p>
     </div>
     <div class="pay-crypto-pending">
-      <div class="pay-actions" style="display:flex;flex-direction:column;gap:10px">
-        ${link}
+      ${link}
+      ${addr}
+      <div class="pay-actions" style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
         <button class="btn btn-sec" id="topupCheck" type="button">Check payment now</button>
       </div>
       ${notice}

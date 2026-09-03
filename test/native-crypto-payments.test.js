@@ -36,7 +36,7 @@ const NETWORKS = [
 
 for (const { provider, network, addrPrefix } of NETWORKS) {
   test(`${provider}: admin can pool addresses, wallet top-up claims one per order, and the pool exhausts loudly`, async (t) => {
-    const srv = await startServer({ PAYMENT_PROVIDER: provider, OXAPAY_MERCHANT_API_KEY: '', OXAPAY_API_KEY: '' });
+    const srv = await startServer({ PAYMENT_PROVIDER: provider });
     t.after(() => srv.stop());
     const { api } = srv;
 
@@ -80,7 +80,7 @@ for (const { provider, network, addrPrefix } of NETWORKS) {
 }
 
 test('the admin crypto-address pool API is admin-only', async (t) => {
-  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron', OXAPAY_MERCHANT_API_KEY: '', OXAPAY_API_KEY: '' });
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron' });
   t.after(() => srv.stop());
   const { api } = srv;
 
@@ -97,7 +97,7 @@ test('the admin crypto-address pool API is admin-only', async (t) => {
 });
 
 test('adding addresses to an unsupported network is rejected', async (t) => {
-  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron', OXAPAY_MERCHANT_API_KEY: '', OXAPAY_API_KEY: '' });
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_tron' });
   t.after(() => srv.stop());
   const { api } = srv;
   const admin = await adminToken(api);

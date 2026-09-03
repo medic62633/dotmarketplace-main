@@ -72,9 +72,7 @@ production.
 | `DEMO_AUTH` | Local-only auth/payment shortcuts. **Forbidden in production**, enforced by `validateEnv()`. |
 | `SESSION_TTL_DAYS` | How long a session token stays valid after signin (default 30). |
 | `STOCK_SECRET`, `STOCK_SECRET_OLD` | AES-256-GCM key encrypting stocked credential inventory at rest. Required in production; `_OLD` supports key rotation without invalidating existing stock. |
-| `PAYMENT_PROVIDER` | `oxapay` (default), `cryptomus`, or one native no-processor chain: `native_tron`, `native_eth`, `native_bsc`, `native_sol`, `native_sol_usdt`, `native_btc`, `native_ltc` (see "Native crypto payments" below). |
-| `OXAPAY_MERCHANT_API_KEY` (or `OXAPAY_API_KEY`), `OXAPAY_SANDBOX`, `OXAPAY_FEE_PERCENT` | OxaPay crypto checkout. Without a key, the app runs wallet-only (no crypto deposits/checkout). |
-| `CRYPTOMUS_MERCHANT_ID`, `CRYPTOMUS_API_KEY`, `CRYPTOMUS_FEE_PERCENT` | Cryptomus, if used as the provider instead. |
+| `PAYMENT_PROVIDER` | Empty (default, wallet-only) or one native no-processor chain: `native_tron`, `native_eth`, `native_bsc`, `native_sol`, `native_sol_usdt`, `native_btc`, `native_ltc` (see "Native crypto payments" below). Crypto payments always go directly to the operator's own wallets — there is no external payment processor. |
 | `TRONGRID_API_KEY`, `NATIVE_TRON_API_BASE`, `NATIVE_TRON_USDT_CONTRACT`, `NATIVE_TRON_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_tron`. |
 | `NATIVE_ETH_RPC_URL`, `NATIVE_ETH_USDT_CONTRACT`, `NATIVE_ETH_USDT_DECIMALS`, `NATIVE_ETH_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_eth`. |
 | `NATIVE_BSC_RPC_URL`, `NATIVE_BSC_USDT_CONTRACT`, `NATIVE_BSC_USDT_DECIMALS`, `NATIVE_BSC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_bsc`. |
@@ -128,7 +126,7 @@ There's no CI-only test database to manage — tests always run against
 Copy `.env.example` to `.env` and fill in real values — `.env` itself is
 gitignored and must never be committed (this repo's history already has one
 example of why: a `.env` was committed once, its secrets are compromised,
-and rotating every one of them — Mongo, OxaPay, admin password, SMTP,
+and rotating every one of them — Mongo, admin password, SMTP,
 `STOCK_SECRET` — plus scrubbing it from git history is the standing
 follow-up on this repo; if that hasn't happened yet, treat it as blocking).
 
@@ -147,10 +145,7 @@ Before flipping real traffic on:
 
 - [ ] `npm run db:verify` against the production `MONGODB_URI` (safe — see
       Reliability & outages)
-- [ ] `OXAPAY_SANDBOX=false` once you're ready to accept live payments, not
-      before
-- [ ] `PUBLIC_URL` is the real `https://` origin (payment callback URLs are
-      built from it)
+- [ ] `PUBLIC_URL` is the real `https://` origin
 - [ ] A reverse proxy terminates TLS in front of the app (`scripts/deploy-vps.sh`
       sets up nginx + Let's Encrypt) — the app itself speaks plain HTTP
 - [ ] `npm run db:backup` is on a cron job (see Backups below)
@@ -242,8 +237,8 @@ real collections. Worth running once after any Mongo version/tier change.
 
 ## Native crypto payments (no processor)
 
-`PAYMENT_PROVIDER` can be set to one of seven native (no OxaPay/Cryptomus,
-no processor cut) chains — `native_tron` (USDT-TRC20), `native_eth`
+`PAYMENT_PROVIDER` can be set to one of seven native (no external
+processor, no processor cut) chains — `native_tron` (USDT-TRC20), `native_eth`
 (USDT-ERC20), `native_bsc` (USDT-BEP20), `native_sol` (native SOL),
 `native_sol_usdt` (USDT-SPL), `native_btc` (Bitcoin), `native_ltc`
 (Litecoin). Only one is active at a time — whichever `PAYMENT_PROVIDER` is
@@ -273,11 +268,10 @@ stock (`lib/stock-store.js`):
    provider's `*_CONFIRM_SECONDS` (a wall-clock stand-in for the chain's own
    block-confirmation count, except Bitcoin/Litecoin, whose esplora-style
    API only reports already-confirmed totals to begin with) before crediting
-   the wallet or releasing escrow — via the exact same
-   `markPaid`/`creditDeposit` path OxaPay payments already use.
-4. None of them have a webhook (nothing to call one) — status is
-   poll-driven, off the buyer's own top-up/checkout page, same as OxaPay's
-   non-webhook fallback path already works today.
+   the wallet or releasing escrow — via `lib/payment-routes.js`'s
+   `markPaid`/`creditDeposit`.
+4. None of them have a webhook (nothing to call one) — status is entirely
+   poll-driven, off the buyer's own top-up/checkout page.
 
 **None of this has been run against a real chain.** Development happened in
 a sandbox with no outbound network access to TronGrid, any Ethereum/BSC
