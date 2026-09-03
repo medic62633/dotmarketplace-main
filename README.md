@@ -72,9 +72,10 @@ production.
 | `DEMO_AUTH` | Local-only auth/payment shortcuts. **Forbidden in production**, enforced by `validateEnv()`. |
 | `SESSION_TTL_DAYS` | How long a session token stays valid after signin (default 30). |
 | `STOCK_SECRET`, `STOCK_SECRET_OLD` | AES-256-GCM key encrypting stocked credential inventory at rest. Required in production; `_OLD` supports key rotation without invalidating existing stock. |
-| `PAYMENT_PROVIDER` | `oxapay` (default) or `cryptomus`. |
+| `PAYMENT_PROVIDER` | `oxapay` (default), `cryptomus`, or `native_tron` (see "Native crypto payments" below). |
 | `OXAPAY_MERCHANT_API_KEY` (or `OXAPAY_API_KEY`), `OXAPAY_SANDBOX`, `OXAPAY_FEE_PERCENT` | OxaPay crypto checkout. Without a key, the app runs wallet-only (no crypto deposits/checkout). |
 | `CRYPTOMUS_MERCHANT_ID`, `CRYPTOMUS_API_KEY`, `CRYPTOMUS_FEE_PERCENT` | Cryptomus, if used as the provider instead. |
+| `TRONGRID_API_KEY`, `NATIVE_TRON_API_BASE`, `NATIVE_TRON_USDT_CONTRACT`, `NATIVE_TRON_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_tron`. See "Native crypto payments" below — **unverified against a real chain, needs testnet validation first.** |
 | `PLATFORM_FEE_PERCENT` | Marketplace's cut of each sale. |
 | `PAYMENT_PENDING_TTL_MS` | How long a pending crypto invoice stays payable before expiring. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Outbound email (verification codes, notifications). Without SMTP configured, verification codes are returned in the API response instead (dev convenience). |
@@ -148,6 +149,9 @@ Before flipping real traffic on:
 - [ ] `npm run db:backup` is on a cron job (see Backups below)
 - [ ] Something polls `GET /healthz` (uptime monitor, PM2 healthcheck) — see
       Reliability & outages
+- [ ] If using `PAYMENT_PROVIDER=native_tron`: testnet-verified first, per
+      "Native crypto payments" below — this is custody code, treat it with
+      more suspicion than everything else on this list combined
 
 ## Deployment
 
@@ -227,6 +231,50 @@ machinery (commit, abort-leaves-no-partial-write, and JSON Schema
 accept/reject) against your real `MONGODB_URI` on a disposable scratch
 collection — safe to run against production, it never touches the app's
 real collections. Worth running once after any Mongo version/tier change.
+
+## Native crypto payments (no processor)
+
+`PAYMENT_PROVIDER=native_tron` accepts USDT on TRON (TRC-20) directly —
+no OxaPay/Cryptomus, no processor cut. It works entirely from a
+**pre-generated address pool**, the same pool/claim pattern this codebase
+already uses for seller credential stock (`lib/stock-store.js`):
+
+1. You generate real TRON addresses yourself, in your own wallet software
+   (TronLink, a hardware wallet, whatever you trust). This app **never**
+   generates or holds a private key or seed phrase — only ever paste public
+   addresses, on the admin portal's **Crypto** tab (`POST
+   /api/admin/crypto-addresses`).
+2. Each order (wallet top-up or checkout) atomically claims one unfunded
+   address from the pool — idempotent per order, same address on a retry,
+   never handed to two orders (`lib/crypto-address-store.js`).
+3. `lib/payments/native-tron.js` polls TronGrid for a matching USDT-TRC20
+   transfer into that address. Once one is observed, the order waits out
+   `NATIVE_TRON_CONFIRM_SECONDS` (default 60s) — a wall-clock stand-in for
+   TRON's block-confirmation count — before crediting the wallet or
+   releasing escrow, via the exact same `markPaid`/`creditDeposit` path
+   OxaPay payments already use.
+4. There's no webhook (nothing to call one) — status is poll-driven, off
+   the buyer's own top-up/checkout page, same as OxaPay's non-webhook
+   fallback path already works today.
+
+**This has not been run against a real chain.** Development happened in a
+sandbox with no outbound network access to TronGrid or any blockchain
+RPC/explorer — address-pool claiming (deterministic, offline logic) is
+covered by `test/native-tron-payments.test.js`, but
+`checkAddressForPayment`'s actual TronGrid call has only been read against
+TronGrid's documented API, never executed. **Before pointing this at
+mainnet funds:**
+
+- Set `NATIVE_TRON_API_BASE=https://api.shasta.trongrid.io` (or Nile) and
+  `NATIVE_TRON_USDT_CONTRACT` to a real testnet USDT-equivalent token, pool
+  a testnet address, and run a real top-up end to end.
+- Have someone else read `lib/payments/native-tron.js` and the
+  `native_tron` branches in `lib/payment-routes.js` / `lib/wallet-routes.js`
+  before trusting it with money you can't afford to lose — this is custody
+  code, not a feature you can patch your way out of after the fact.
+- Consider whether `NATIVE_TRON_CONFIRM_SECONDS`'s wall-clock approach is
+  conservative enough for your risk tolerance; it is a simple, honest proxy
+  for TRON finality, not a guarantee.
 
 ## Architecture notes
 

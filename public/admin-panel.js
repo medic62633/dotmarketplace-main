@@ -12,6 +12,7 @@ PanelCommon.boot({
     ['payments', 'Payments'],
     ['listings', 'Listings'],
     ['disputes', 'Disputes'],
+    ['crypto', 'Crypto'],
   ],
 
   async render(tab, ctx) {
@@ -33,6 +34,7 @@ PanelCommon.boot({
       else if (tab === 'payments') await renderPayments(ctx);
       else if (tab === 'listings') await renderListings(ctx);
       else if (tab === 'disputes') await renderDisputes(ctx);
+      else if (tab === 'crypto') await renderCrypto(ctx);
     });
 
     if (root.querySelector('[data-retry]')) {
@@ -147,6 +149,60 @@ async function renderSellers(ctx) {
       }
       ctx.showTab('sellers');
     } catch (err) { toast(err.message, 'info'); }
+  });
+}
+
+/* Native crypto deposit-address pool (no payment processor — see
+ * lib/crypto-address-store.js / lib/payments/native-tron.js). An admin
+ * generates addresses in their own wallet software and pastes the public
+ * addresses here; this app never generates or holds a private key. */
+async function renderCrypto(ctx) {
+  const { root, api, esc, toast, ui } = ctx;
+  const S = ctx.state;
+  const NETWORK = 'tron-usdt-trc20';
+  const { networks } = await api('/api/admin/crypto-addresses');
+  const pool = networks.find(n => n.network === NETWORK) || { available: 0, assigned: 0 };
+  const active = S.config?.paymentProvider === 'native_tron';
+
+  root.innerHTML = `
+    <section class="panel">
+      <h2>Crypto deposit addresses — USDT (TRON / TRC-20)</h2>
+      <p class="seller-hint">
+        ${active
+          ? 'PAYMENT_PROVIDER=native_tron is active — checkout and wallet top-ups claim one address per order directly from this pool, no processor involved.'
+          : 'This pool is idle: PAYMENT_PROVIDER is not set to native_tron, so checkout/top-ups are not using it yet.'}
+        Generate addresses in your own wallet (never paste a private key or seed phrase — only public addresses) and add them below.
+      </p>
+      ${ui.stats([
+        { k: 'Available', v: pool.available },
+        { k: 'Assigned to orders', v: pool.assigned },
+      ])}
+      <form id="cryptoAddrForm">
+        <label class="sf"><span>Addresses — one per line</span>
+          <textarea id="cryptoAddrList" rows="6" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&#10;TYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY" style="width:100%;font-family:monospace"></textarea>
+        </label>
+        <button class="btn btn-pri" type="submit" id="cryptoAddrAdd" style="margin-top:8px">Add to pool</button>
+      </form>
+      <div id="cryptoAddrResult"></div>
+    </section>`;
+
+  $('#cryptoAddrForm')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('#cryptoAddrAdd');
+    const raw = $('#cryptoAddrList')?.value || '';
+    if (!raw.trim()) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+    try {
+      const res = await api('/api/admin/crypto-addresses', { method: 'POST', body: { network: NETWORK, addresses: raw } });
+      const box = $('#cryptoAddrResult');
+      box.innerHTML = `<div class="seller-banner banner-ok" style="margin-top:12px">Added ${res.added}${res.duplicates ? `, skipped ${res.duplicates} duplicate(s)` : ''}. Pool now: ${res.stats.available} available, ${res.stats.assigned} assigned.</div>`;
+      toast(`Added ${res.added} address(es)`, 'ok');
+      ctx.showTab('crypto');
+    } catch (err) {
+      toast(err.message, 'info');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Add to pool'; }
+    }
   });
 }
 
