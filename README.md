@@ -76,9 +76,9 @@ production.
 | `TRONGRID_API_KEY`, `NATIVE_TRON_API_BASE`, `NATIVE_TRON_USDT_CONTRACT`, `NATIVE_TRON_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_tron`. |
 | `NATIVE_ETH_RPC_URL`, `NATIVE_ETH_USDT_CONTRACT`, `NATIVE_ETH_USDT_DECIMALS`, `NATIVE_ETH_CONFIRM_SECONDS`, `NATIVE_ETH_MIN_CONFIRMATIONS` (default 12) | Only used when `PAYMENT_PROVIDER=native_eth`. |
 | `NATIVE_BSC_RPC_URL`, `NATIVE_BSC_USDT_CONTRACT`, `NATIVE_BSC_USDT_DECIMALS`, `NATIVE_BSC_CONFIRM_SECONDS`, `NATIVE_BSC_MIN_CONFIRMATIONS` (default 20 — higher than ETH; BSC has a documented history of deeper reorgs) | Only used when `PAYMENT_PROVIDER=native_bsc`. |
-| `NATIVE_SOL_RPC_URL`, `NATIVE_SOL_USDT_MINT`, `NATIVE_SOL_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_sol` or `native_sol_usdt`. Balance reads always use `finalized` commitment. |
-| `NATIVE_BTC_API_BASE`, `NATIVE_BTC_CONFIRM_SECONDS` (default 1800 — 30 min, ~3 extra blocks on top of the 1 confirmation `chain_stats` already guarantees) | Only used when `PAYMENT_PROVIDER=native_btc`. |
-| `NATIVE_LTC_API_BASE`, `NATIVE_LTC_CONFIRM_SECONDS` (default 480 — 8 min, same ~3-block margin scaled to Litecoin's faster blocks) | Only used when `PAYMENT_PROVIDER=native_ltc`. |
+| `NATIVE_SOL_RPC_URL`, `NATIVE_SOL_USDT_MINT`, `NATIVE_SOL_CONFIRM_SECONDS` (default 10) | Only used when `PAYMENT_PROVIDER=native_sol` or `native_sol_usdt`. Balance reads always use `finalized` commitment; the default is a small margin on top of that. |
+| `NATIVE_BTC_API_BASE`, `NATIVE_BTC_CONFIRM_SECONDS` (default 900 — 15 min, ~2 extra blocks on top of the 1 confirmation `chain_stats` already guarantees) | Only used when `PAYMENT_PROVIDER=native_btc`. |
+| `NATIVE_LTC_API_BASE`, `NATIVE_LTC_CONFIRM_SECONDS` (default 300 — 5 min, same ~2-block margin scaled to Litecoin's faster blocks) | Only used when `PAYMENT_PROVIDER=native_ltc`. |
 | `NATIVE_BTC_USD_RATE`, `NATIVE_LTC_USD_RATE`, `NATIVE_SOL_USD_RATE` | Pin a fixed USD exchange rate for that coin instead of the live CoinGecko lookup `lib/payments/fx.js` otherwise uses to convert the USDT listing price (see "Native crypto payments"). Required if this server has no outbound internet access. |
 
 All seven `native_*` providers are **unverified against a real chain, and need testnet validation before mainnet** — see "Native crypto payments" below.
@@ -272,12 +272,16 @@ stock (`lib/stock-store.js`):
    API tells you about confirmation depth differs:
    - **Bitcoin/Litecoin**: `chain_stats.funded_txo_sum` only ever counts a
      transfer once it's in a block — 1 real confirmation, no wall-clock
-     guessing involved. `*_CONFIRM_SECONDS` (default 30 min for BTC, 8 min
-     for LTC) is a small extra margin on top of that, not the primary gate.
-   - **TRON, Solana**: fast, well-understood finality; `*_CONFIRM_SECONDS`
-     (default 60s / 30s) is the real gate, sized to each chain's own
-     practical finality time. Solana balance reads pin `commitment:
-     'finalized'` explicitly rather than trusting the RPC's own default.
+     guessing involved. `*_CONFIRM_SECONDS` (default 15 min for BTC, 5 min
+     for LTC — roughly 2 more blocks' worth of margin on each) is a small
+     extra buffer on top of that, not the primary gate.
+   - **TRON**: fast, well-understood DPoS finality; `*_CONFIRM_SECONDS`
+     (default 60s) is the real gate, sized to TRON's own practical finality
+     time.
+   - **Solana**: balance reads pin `commitment: 'finalized'` explicitly
+     rather than trusting the RPC's own default — that commitment level is
+     itself Solana's strongest, reorg-safe guarantee. `*_CONFIRM_SECONDS`
+     (default 10s) is only a small margin on top of it.
    - **Ethereum, BSC**: an `eth_getLogs` transfer log carries no confirmation
      info at all — it appears the instant a block is mined, reorg risk and
      all. `checkAddressForPayment` requires the log's block to sit under at
