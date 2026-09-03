@@ -74,11 +74,11 @@ production.
 | `STOCK_SECRET`, `STOCK_SECRET_OLD` | AES-256-GCM key encrypting stocked credential inventory at rest. Required in production; `_OLD` supports key rotation without invalidating existing stock. |
 | `PAYMENT_PROVIDER` | Empty (default, wallet-only) or one native no-processor chain: `native_tron`, `native_eth`, `native_bsc`, `native_sol`, `native_sol_usdt`, `native_btc`, `native_ltc` (see "Native crypto payments" below). Crypto payments always go directly to the operator's own wallets — there is no external payment processor. |
 | `TRONGRID_API_KEY`, `NATIVE_TRON_API_BASE`, `NATIVE_TRON_USDT_CONTRACT`, `NATIVE_TRON_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_tron`. |
-| `NATIVE_ETH_RPC_URL`, `NATIVE_ETH_USDT_CONTRACT`, `NATIVE_ETH_USDT_DECIMALS`, `NATIVE_ETH_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_eth`. |
-| `NATIVE_BSC_RPC_URL`, `NATIVE_BSC_USDT_CONTRACT`, `NATIVE_BSC_USDT_DECIMALS`, `NATIVE_BSC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_bsc`. |
-| `NATIVE_SOL_RPC_URL`, `NATIVE_SOL_USDT_MINT`, `NATIVE_SOL_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_sol` or `native_sol_usdt`. |
-| `NATIVE_BTC_API_BASE`, `NATIVE_BTC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_btc`. |
-| `NATIVE_LTC_API_BASE`, `NATIVE_LTC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_ltc`. |
+| `NATIVE_ETH_RPC_URL`, `NATIVE_ETH_USDT_CONTRACT`, `NATIVE_ETH_USDT_DECIMALS`, `NATIVE_ETH_CONFIRM_SECONDS`, `NATIVE_ETH_MIN_CONFIRMATIONS` (default 12) | Only used when `PAYMENT_PROVIDER=native_eth`. |
+| `NATIVE_BSC_RPC_URL`, `NATIVE_BSC_USDT_CONTRACT`, `NATIVE_BSC_USDT_DECIMALS`, `NATIVE_BSC_CONFIRM_SECONDS`, `NATIVE_BSC_MIN_CONFIRMATIONS` (default 20 — higher than ETH; BSC has a documented history of deeper reorgs) | Only used when `PAYMENT_PROVIDER=native_bsc`. |
+| `NATIVE_SOL_RPC_URL`, `NATIVE_SOL_USDT_MINT`, `NATIVE_SOL_CONFIRM_SECONDS` (default 10) | Only used when `PAYMENT_PROVIDER=native_sol` or `native_sol_usdt`. Balance reads always use `finalized` commitment; the default is a small margin on top of that. |
+| `NATIVE_BTC_API_BASE`, `NATIVE_BTC_CONFIRM_SECONDS` (default 900 — 15 min, ~2 extra blocks on top of the 1 confirmation `chain_stats` already guarantees) | Only used when `PAYMENT_PROVIDER=native_btc`. |
+| `NATIVE_LTC_API_BASE`, `NATIVE_LTC_CONFIRM_SECONDS` (default 300 — 5 min, same ~2-block margin scaled to Litecoin's faster blocks) | Only used when `PAYMENT_PROVIDER=native_ltc`. |
 | `NATIVE_BTC_USD_RATE`, `NATIVE_LTC_USD_RATE`, `NATIVE_SOL_USD_RATE` | Pin a fixed USD exchange rate for that coin instead of the live CoinGecko lookup `lib/payments/fx.js` otherwise uses to convert the USDT listing price (see "Native crypto payments"). Required if this server has no outbound internet access. |
 
 All seven `native_*` providers are **unverified against a real chain, and need testnet validation before mainnet** — see "Native crypto payments" below.
@@ -266,11 +266,30 @@ stock (`lib/stock-store.js`):
    (shared by `native_sol`/`native_sol_usdt`), or `native-utxo.js` (shared
    by `native_btc`/`native_ltc`) — polls that chain for a matching transfer
    into the claimed address. Once observed, the order waits out that
-   provider's `*_CONFIRM_SECONDS` (a wall-clock stand-in for the chain's own
-   block-confirmation count, except Bitcoin/Litecoin, whose esplora-style
-   API only reports already-confirmed totals to begin with) before crediting
-   the wallet or releasing escrow — via `lib/payment-routes.js`'s
-   `markPaid`/`creditDeposit`.
+   provider's `*_CONFIRM_SECONDS` before crediting the wallet or releasing
+   escrow, via `lib/payment-routes.js`'s `markPaid`/`creditDeposit`. What
+   "observed" means differs by chain family, because how much a chain's own
+   API tells you about confirmation depth differs:
+   - **Bitcoin/Litecoin**: `chain_stats.funded_txo_sum` only ever counts a
+     transfer once it's in a block — 1 real confirmation, no wall-clock
+     guessing involved. `*_CONFIRM_SECONDS` (default 15 min for BTC, 5 min
+     for LTC — roughly 2 more blocks' worth of margin on each) is a small
+     extra buffer on top of that, not the primary gate.
+   - **TRON**: fast, well-understood DPoS finality; `*_CONFIRM_SECONDS`
+     (default 60s) is the real gate, sized to TRON's own practical finality
+     time.
+   - **Solana**: balance reads pin `commitment: 'finalized'` explicitly
+     rather than trusting the RPC's own default — that commitment level is
+     itself Solana's strongest, reorg-safe guarantee. `*_CONFIRM_SECONDS`
+     (default 10s) is only a small margin on top of it.
+   - **Ethereum, BSC**: an `eth_getLogs` transfer log carries no confirmation
+     info at all — it appears the instant a block is mined, reorg risk and
+     all. `checkAddressForPayment` requires the log's block to sit under at
+     least `*_MIN_CONFIRMATIONS` (default 12 for ETH, 20 for BSC — higher
+     because BSC has a documented history of much deeper reorgs than
+     Ethereum has ever had) before it reports the transfer as observed at
+     all; `*_CONFIRM_SECONDS` (default 15s) is only a small margin on top of
+     that, not the main defense the way it is for TRON/Solana.
 4. None of them have a webhook (nothing to call one) — status is entirely
    poll-driven, off the buyer's own top-up/checkout page.
 
@@ -317,9 +336,11 @@ pointing any of these at mainnet funds:**
   for that chain is actually correct and currently live — several (notably
   `NATIVE_LTC_API_BASE`) were set from documentation/memory, not confirmed
   reachable, because this environment couldn't reach them either.
-- Consider whether that provider's `*_CONFIRM_SECONDS` default is
-  conservative enough for your risk tolerance; it's a simple, honest proxy
-  for chain finality, not a guarantee.
+- Consider whether that provider's `*_CONFIRM_SECONDS` (and, for
+  `native_eth`/`native_bsc`, `*_MIN_CONFIRMATIONS`) default is conservative
+  enough for your risk tolerance and the value you expect to move — these
+  are sane, documented defaults, not guarantees for every amount or every
+  operator's risk appetite.
 - For `native_btc`/`native_ltc`/`native_sol`: confirm `lib/payments/fx.js`'s
   CoinGecko lookup is actually reachable from where you deploy, or set the
   matching `NATIVE_*_USD_RATE` override — this environment has no outbound
