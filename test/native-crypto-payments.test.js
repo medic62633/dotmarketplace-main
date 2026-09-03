@@ -157,11 +157,14 @@ test('escrow checkout on a non-USD-pegged native chain also converts the listing
 });
 
 test('checkout on a non-USD-pegged native chain fails loudly (never falls back to a 1:1 amount) when no exchange rate is available', async (t) => {
-  // No NATIVE_BTC_USD_RATE override and no network access in this
-  // environment — the live CoinGecko fetch is guaranteed to fail here, which
-  // is exactly the scenario this asserts against: fail the checkout, don't
+  // No NATIVE_BTC_USD_RATE override, and NATIVE_FX_API_BASE points at a
+  // guaranteed-unreachable address (nothing listens on 127.0.0.1:1) so the
+  // live CoinGecko fetch fails deterministically everywhere — this sandbox
+  // has no outbound network access at all, but a real CI runner typically
+  // does, so "no network access" can't be what this test relies on to force
+  // the failure path it's asserting against: fail the checkout, don't
   // silently quote 20 BTC for a $20 top-up.
-  const srv = await startServer({ PAYMENT_PROVIDER: 'native_btc' });
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_btc', NATIVE_FX_API_BASE: 'http://127.0.0.1:1' });
   t.after(() => srv.stop());
   const { api } = srv;
 
