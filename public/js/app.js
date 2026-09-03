@@ -938,9 +938,35 @@ function fmtCountdown(ms) {
   return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
 }
 
-function paymentGatewayHtml({ network, currency, amount, address, expiresAt }) {
+// Fixed-precision, non-grouped amount string — e.g. "0.00312450" for BTC
+// (8dp) vs "42.50" for USDT (2dp). toLocaleString-style comma grouping
+// (this app's fmt()) is fine for USDT prices but would corrupt a BTC/SOL
+// amount if pasted into a wallet, and rounding to 2dp would silently drop
+// everything after the decimal for a sub-cent-per-unit coin. Server-declared
+// `decimals` (lib/payments/index.js's NATIVE_NETWORK_LABELS) is the one
+// source of truth for how many places a given currency needs.
+function fmtCoinAmount(amount, decimals) {
+  const dp = Number.isFinite(decimals) ? decimals : 2;
+  const n = Number(amount);
+  return Number.isFinite(n) ? n.toFixed(dp) : '0'.padEnd(dp ? dp + 2 : 1, '0');
+}
+
+// Tracks which order's gateway is actually on screen right now. Both the
+// escrow and top-up flows poll in the background even after their modal is
+// replaced by a different one (by design — a confirmation arriving after the
+// buyer navigated away must still land), so a stale poll for order A must
+// never overwrite order B's status strip just because they reuse the same
+// #pgwStatus DOM ids. Every status-setting call site passes its own orderId;
+// setGatewayStatus no-ops if it no longer matches what's on screen.
+let activeGatewayOrderId = null;
+
+function paymentGatewayHtml({ network, currency, decimals, amount, amountUsd, address, expiresAt }) {
   const netLabel = network || 'this network';
   const cur = currency || 'USDT';
+  const amountStr = fmtCoinAmount(amount, decimals);
+  const usdLine = Number.isFinite(amountUsd)
+    ? `<span class="pgw-usd">≈ ${fmt(amountUsd)} USD at invoice creation</span>`
+    : '';
   return `
     <div class="pgw">
       <div class="pgw-top">
@@ -954,9 +980,10 @@ function paymentGatewayHtml({ network, currency, amount, address, expiresAt }) {
       <div class="pgw-block">
         <span class="pgw-lbl">Amount to send</span>
         <div class="pgw-field amount">
-          <span class="val mono">${esc(amount)}<span class="cur">${esc(cur)}</span></span>
-          <button type="button" class="pgw-copy" data-copy-val="${esc(String(amount))}" aria-label="Copy amount" title="Copy amount">${COPY_ICON}</button>
+          <span class="val mono">${esc(amountStr)}<span class="cur">${esc(cur)}</span></span>
+          <button type="button" class="pgw-copy" data-copy-val="${esc(amountStr)}" aria-label="Copy amount" title="Copy amount">${COPY_ICON}</button>
         </div>
+        ${usdLine}
       </div>
       <div class="pgw-block">
         <span class="pgw-lbl">Send to this address</span>
@@ -970,20 +997,25 @@ function paymentGatewayHtml({ network, currency, amount, address, expiresAt }) {
 }
 
 let pgwTimerInterval = null;
-function initPaymentGateway(root, { expiresAt }) {
+function initPaymentGateway(root, { expiresAt, onExpire }) {
   (root || document).querySelectorAll('[data-copy-val]').forEach(btn => {
     btn.addEventListener('click', () => copyToClipboard(btn.dataset.copyVal, btn));
   });
   if (pgwTimerInterval) { clearInterval(pgwTimerInterval); pgwTimerInterval = null; }
   if (!expiresAt) return;
   const end = new Date(expiresAt).getTime();
+  let expiredFired = false;
   const tick = () => {
     const el = $('#pgwTimer');
     if (!el) { clearInterval(pgwTimerInterval); pgwTimerInterval = null; return; }
     const left = end - Date.now();
     el.textContent = left > 0 ? fmtCountdown(left) : 'Expired';
     el.classList.toggle('low', left > 0 && left < 5 * 60 * 1000);
-    if (left <= 0) { clearInterval(pgwTimerInterval); pgwTimerInterval = null; }
+    if (left <= 0) {
+      clearInterval(pgwTimerInterval);
+      pgwTimerInterval = null;
+      if (!expiredFired) { expiredFired = true; onExpire && onExpire(); }
+    }
   };
   tick();
   pgwTimerInterval = setInterval(tick, 1000);
@@ -992,15 +1024,23 @@ function initPaymentGateway(root, { expiresAt }) {
 // Reflects the latest poll result in the status strip: "waiting" (default)
 // while nothing has been seen yet, "seen" once a matching transfer is
 // observed on-chain but its confirm window hasn't elapsed (real progress
-// instead of a static spinner for the whole wait), then "paid".
-function setGatewayStatus(state, detail) {
+// instead of a static spinner for the whole wait), "paid", or "expired".
+// `orderId` guards against a background poll for a since-replaced gateway
+// clobbering whatever the buyer is actually looking at now — see
+// activeGatewayOrderId above.
+function setGatewayStatus(state, detail, orderId) {
+  if (orderId && orderId !== activeGatewayOrderId) return;
   const strip = $('#pgwStatus');
   const text = $('#pgwStatusText');
   if (!strip || !text) return;
-  strip.classList.remove('seen', 'paid');
+  strip.classList.remove('seen', 'paid', 'expired');
   if (state === 'paid') {
     strip.classList.add('paid');
     text.textContent = 'Payment confirmed';
+  } else if (state === 'expired') {
+    strip.classList.add('expired');
+    text.textContent = detail || 'This payment has expired — close this and try again.';
+    document.querySelectorAll('#payCheckNow, #topupCheck').forEach(b => { b.disabled = true; });
   } else if (state === 'seen') {
     strip.classList.add('seen');
     text.textContent = Number.isFinite(detail)
@@ -1016,22 +1056,33 @@ function renderCryptoPaymentPending(c, payment, deal, sandbox, onPaid) {
   const total = payment.payAmount ?? payment.buyerTotal ?? fees.buyerTotal;
   const network = payment.networkLabel || payment.payNetwork || 'the selected network';
   const currency = payment.payCurrency || 'USDT';
+  const orderId = deal.id;
+  activeGatewayOrderId = orderId;
   const link = payment.payUrl
     ? `<a class="btn btn-sec pay-link" href="${esc(payment.payUrl)}" target="_blank" rel="noopener">Open payment page</a>`
     : '';
 
+  // Returns true once polling should stop (paid, or a terminal state like
+  // expired/cancelled) — not only on success — so both the manual "Check
+  // payment now" handler and processCryptoPayment's poll loop know to quit
+  // without needing their own copy of this status logic.
   async function tryCompletePaid() {
     try {
       const r = await fetch('/api/payments/status/' + encodeURIComponent(deal.id), { headers: authHeaders() });
       const data = await r.json().catch(() => ({}));
-      if (r.ok && data.payment?.status === 'paid') {
+      const status = data.payment?.status;
+      if (r.ok && status === 'paid') {
         if (data.payment.payNetwork) deal.payNetwork = data.payment.payNetwork;
-        setGatewayStatus('paid');
+        setGatewayStatus('paid', null, orderId);
         if (onPaid) await onPaid();
         return true;
       }
+      if (r.ok && (status === 'expired' || status === 'cancelled')) {
+        setGatewayStatus('expired', null, orderId);
+        return true;
+      }
       if (r.ok && data.progress) {
-        setGatewayStatus('seen', data.progress.confirmSecondsLeft);
+        setGatewayStatus('seen', data.progress.confirmSecondsLeft, orderId);
       }
     } catch (e) {}
     return false;
@@ -1047,7 +1098,11 @@ function renderCryptoPaymentPending(c, payment, deal, sandbox, onPaid) {
     </div>
     <div class="pay-crypto-pending">
       ${payment.payAddress
-        ? paymentGatewayHtml({ network, currency, amount: fmt(payment.payAmount ?? total), address: payment.payAddress, expiresAt: payment.expiresAt })
+        ? paymentGatewayHtml({
+            network, currency, decimals: payment.payDecimals,
+            amount: payment.payAmount ?? total, amountUsd: payment.payAmountUsd,
+            address: payment.payAddress, expiresAt: payment.expiresAt,
+          })
         : `<p class="muted" style="font-size:13px">Waiting for a payment link…</p>`}
       ${link}
       <div class="pgw-actions">
@@ -1055,13 +1110,16 @@ function renderCryptoPaymentPending(c, payment, deal, sandbox, onPaid) {
       </div>
     </div>`;
 
-  initPaymentGateway($('#payCard'), { expiresAt: payment.expiresAt });
+  initPaymentGateway($('#payCard'), {
+    expiresAt: payment.expiresAt,
+    onExpire: () => setGatewayStatus('expired', null, orderId),
+  });
   $('#payClose').addEventListener('click', closePaymentModal);
   $('#payCheckNow')?.addEventListener('click', async () => {
     const btn = $('#payCheckNow');
     if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
-    const paid = await tryCompletePaid();
-    if (!paid) setGatewayStatus('waiting', 'Still waiting — send the payment, then check again.');
+    const done = await tryCompletePaid();
+    if (!done) setGatewayStatus('waiting', 'Still waiting — send the payment, then check again.', orderId);
     if (btn) { btn.disabled = false; btn.textContent = 'Check payment now'; }
   });
 
@@ -2021,6 +2079,7 @@ async function startTopup() {
 }
 
 function renderTopupPending(t) {
+  activeGatewayOrderId = t.orderId;
   const hasGateway = !!t.payAddress;
   const network = t.networkLabel || t.payNetwork || 'the selected network';
   const currency = t.payCurrency || 'USDT';
@@ -2045,7 +2104,11 @@ function renderTopupPending(t) {
     </div>
     <div class="pay-crypto-pending">
       ${hasGateway
-        ? paymentGatewayHtml({ network, currency, amount: fmt(t.amount), address: t.payAddress, expiresAt: t.expiresAt })
+        ? paymentGatewayHtml({
+            network, currency, decimals: t.payDecimals,
+            amount: t.payAmount ?? t.amount, amountUsd: t.payAmountUsd,
+            address: t.payAddress, expiresAt: t.expiresAt,
+          })
         : ''}
       ${link}
       <div class="pgw-actions">
@@ -2053,7 +2116,12 @@ function renderTopupPending(t) {
       </div>
       ${notice}
     </div>`;
-  if (hasGateway) initPaymentGateway($('#payCard'), { expiresAt: t.expiresAt });
+  if (hasGateway) {
+    initPaymentGateway($('#payCard'), {
+      expiresAt: t.expiresAt,
+      onExpire: () => setGatewayStatus('expired', null, t.orderId),
+    });
+  }
   $('#payClose').addEventListener('click', closePaymentModal);
   $('#topupCheck').addEventListener('click', () => checkTopup(t.orderId, t.amount));
   $('#topupSimulate')?.addEventListener('click', () => simulateTopup(t.orderId, t.amount));
@@ -2061,10 +2129,14 @@ function renderTopupPending(t) {
 }
 
 // Reflects status in the gateway strip when one is on screen (a real native
-// provider is configured), otherwise falls back to the plain status line
-// shown alongside the dev-only "Simulate payment" button.
-function setTopupFeedback(state, msg) {
-  if ($('#pgwStatus')) { setGatewayStatus(state, msg); return; }
+// provider is configured) and it's still the top-up actually being shown,
+// otherwise falls back to the plain status line shown alongside the dev-only
+// "Simulate payment" button. See activeGatewayOrderId for why the orderId
+// check matters — pollTopup for an old/replaced top-up must not stomp on
+// whatever the buyer is looking at now.
+function setTopupFeedback(state, msg, orderId) {
+  if ($('#pgwStatus')) { setGatewayStatus(state, msg, orderId); return; }
+  if (orderId && orderId !== activeGatewayOrderId) return;
   const el = $('#topupFallbackStatus');
   if (el) el.textContent = msg || '';
 }
@@ -2077,10 +2149,10 @@ async function simulateTopup(orderId, amount) {
       method: 'POST', headers: authHeaders(),
     });
     const d = await r.json().catch(() => ({}));
-    if (r.ok && d.status === 'paid') { await onTopupPaid(amount); return; }
-    setTopupFeedback('waiting', d.msg || 'Could not simulate payment — try again.');
+    if (r.ok && d.status === 'paid') { await onTopupPaid(amount, orderId); return; }
+    setTopupFeedback('waiting', d.msg || 'Could not simulate payment — try again.', orderId);
   } catch (e) {
-    setTopupFeedback('waiting', 'Network error — try again.');
+    setTopupFeedback('waiting', 'Network error — try again.', orderId);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Simulate payment (dev)'; }
   }
@@ -2113,17 +2185,18 @@ async function refreshWalletBalance() {
   } catch (e) {}
 }
 
-async function onTopupPaid(amount) {
+async function onTopupPaid(amount, orderId) {
   // refreshWalletBalance() rebuilds TXS from the server's wallet ledger, which
   // already contains this deposit (it's credited before the status endpoint
   // reports 'paid') — adding another entry here duplicated every top-up.
   await refreshWalletBalance();
-  setTopupFeedback('paid');
+  setTopupFeedback('paid', null, orderId);
   // Top-up and checkout share #payOverlay, and pollTopup keeps polling after
-  // the top-up modal closes — only close the overlay if a top-up view is
-  // actually on screen, or a late confirmation would kill an in-progress
-  // unrelated purchase.
-  if ($('#topupCheck') || $('#topupAmt')) closePaymentModal();
+  // the top-up modal closes (even for an order that's no longer the one on
+  // screen) — only close the overlay if THIS order's top-up view is still
+  // actually showing, or a late confirmation for an old/replaced top-up
+  // would yank the buyer out of whatever they've since moved on to.
+  if (orderId === activeGatewayOrderId && ($('#topupCheck') || $('#topupAmt'))) closePaymentModal();
   toast(`${fmt(amount)} USDT added to your balance`, 'ok');
 }
 
@@ -2133,12 +2206,12 @@ async function checkTopup(orderId, amount) {
   try {
     const r = await fetch('/api/wallet/topup/' + encodeURIComponent(orderId), { headers: authHeaders() });
     const d = await r.json().catch(() => ({}));
-    if (d.status === 'paid') { await onTopupPaid(amount); return true; }
-    if (d.progress) setTopupFeedback('seen', d.progress.confirmSecondsLeft);
-    else if (['expired', 'cancelled'].includes(d.status)) setTopupFeedback('waiting', 'This top-up has expired — start a new one.');
-    else setTopupFeedback('waiting', 'Not received yet — complete the payment, then check again.');
+    if (d.status === 'paid') { await onTopupPaid(amount, orderId); return true; }
+    if (d.progress) setTopupFeedback('seen', d.progress.confirmSecondsLeft, orderId);
+    else if (['expired', 'cancelled'].includes(d.status)) setTopupFeedback('expired', null, orderId);
+    else setTopupFeedback('waiting', 'Not received yet — complete the payment, then check again.', orderId);
   } catch (e) {
-    setTopupFeedback('waiting', 'Could not check — try again.');
+    setTopupFeedback('waiting', 'Could not check — try again.', orderId);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Check payment now'; }
   }
@@ -2156,9 +2229,9 @@ async function pollTopup(orderId, amount) {
     try {
       const r = await fetch('/api/wallet/topup/' + encodeURIComponent(orderId), { headers: authHeaders() });
       const d = await r.json().catch(() => ({}));
-      if (d.status === 'paid') { await onTopupPaid(amount); return; }
-      if (d.progress) setTopupFeedback('seen', d.progress.confirmSecondsLeft);
-      if (['expired', 'cancelled'].includes(d.status)) { setTopupFeedback('waiting', 'This top-up has expired.'); return; }
+      if (d.status === 'paid') { await onTopupPaid(amount, orderId); return; }
+      if (d.progress) setTopupFeedback('seen', d.progress.confirmSecondsLeft, orderId);
+      if (['expired', 'cancelled'].includes(d.status)) { setTopupFeedback('expired', null, orderId); return; }
     } catch (e) {}
   }
 }

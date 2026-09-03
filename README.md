@@ -79,6 +79,7 @@ production.
 | `NATIVE_SOL_RPC_URL`, `NATIVE_SOL_USDT_MINT`, `NATIVE_SOL_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_sol` or `native_sol_usdt`. |
 | `NATIVE_BTC_API_BASE`, `NATIVE_BTC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_btc`. |
 | `NATIVE_LTC_API_BASE`, `NATIVE_LTC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_ltc`. |
+| `NATIVE_BTC_USD_RATE`, `NATIVE_LTC_USD_RATE`, `NATIVE_SOL_USD_RATE` | Pin a fixed USD exchange rate for that coin instead of the live CoinGecko lookup `lib/payments/fx.js` otherwise uses to convert the USDT listing price (see "Native crypto payments"). Required if this server has no outbound internet access. |
 
 All seven `native_*` providers are **unverified against a real chain, and need testnet validation before mainnet** — see "Native crypto payments" below.
 | `PLATFORM_FEE_PERCENT` | Marketplace's cut of each sale. |
@@ -273,6 +274,23 @@ stock (`lib/stock-store.js`):
 4. None of them have a webhook (nothing to call one) — status is entirely
    poll-driven, off the buyer's own top-up/checkout page.
 
+**Currency conversion.** Every listing/top-up price in this app is USDT.
+`native_tron`, `native_eth`, `native_bsc`, and `native_sol_usdt` are
+themselves USD-pegged stablecoins, so 1 USDT = 1 to send — no conversion.
+`native_btc`, `native_ltc`, and `native_sol` (plain SOL) are **not**
+USD-pegged: `lib/payments/fx.js` converts the USDT amount to a coin amount
+via a live CoinGecko lookup at invoice creation, and that converted amount
+(not the raw USDT figure) is what's quoted to the buyer and checked on-chain
+for the rest of that invoice's life — the rate is locked in once, not
+re-fetched on every poll. If no live or recently-cached rate is available,
+invoice creation fails loudly rather than ever falling back to a 1:1 amount.
+`NATIVE_BTC_USD_RATE`/`NATIVE_LTC_USD_RATE`/`NATIVE_SOL_USD_RATE` pin a fixed
+rate instead of calling out at all — required if the server itself has no
+outbound internet access, and the only way `test/native-crypto-payments.test.js`
+exercises this deterministically (this environment has no outbound access to
+api.coingecko.com to verify the live path against — testnet/live-verify it,
+same as every other native provider call here).
+
 **None of this has been run against a real chain.** Development happened in
 a sandbox with no outbound network access to TronGrid, any Ethereum/BSC
 RPC, any Solana RPC, or any Bitcoin/Litecoin explorer — address-pool
@@ -302,6 +320,11 @@ pointing any of these at mainnet funds:**
 - Consider whether that provider's `*_CONFIRM_SECONDS` default is
   conservative enough for your risk tolerance; it's a simple, honest proxy
   for chain finality, not a guarantee.
+- For `native_btc`/`native_ltc`/`native_sol`: confirm `lib/payments/fx.js`'s
+  CoinGecko lookup is actually reachable from where you deploy, or set the
+  matching `NATIVE_*_USD_RATE` override — this environment has no outbound
+  access to verify the live path, only the conversion math itself (see
+  `test/native-crypto-payments.test.js`).
 
 ## Architecture notes
 
