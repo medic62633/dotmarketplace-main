@@ -157,34 +157,51 @@ async function renderSellers(ctx) {
  * generates addresses in their own wallet software and pastes the public
  * addresses here; this app never generates or holds a private key. */
 async function renderCrypto(ctx) {
-  const { root, api, esc, toast, ui } = ctx;
-  const S = ctx.state;
-  const NETWORK = 'tron-usdt-trc20';
-  const { networks } = await api('/api/admin/crypto-addresses');
-  const pool = networks.find(n => n.network === NETWORK) || { available: 0, assigned: 0 };
-  const active = S.config?.paymentProvider === 'native_tron';
+  const { root, api, esc, toast } = ctx;
+  const { networks, activeProvider } = await api('/api/admin/crypto-addresses');
+  const activeNetwork = { native_tron: 'tron-usdt-trc20', native_eth: 'eth-usdt-erc20', native_bsc: 'bsc-usdt-bep20', native_sol_usdt: 'sol-usdt-spl', native_sol: 'sol-native', native_btc: 'btc', native_ltc: 'ltc' }[activeProvider] || null;
+  const selected = ctx.state.cryptoNetwork && networks.some(n => n.network === ctx.state.cryptoNetwork)
+    ? ctx.state.cryptoNetwork
+    : (activeNetwork || networks[0]?.network);
+  ctx.state.cryptoNetwork = selected;
+  const pool = networks.find(n => n.network === selected) || { available: 0, assigned: 0, label: selected };
 
   root.innerHTML = `
     <section class="panel">
-      <h2>Crypto deposit addresses — USDT (TRON / TRC-20)</h2>
+      <h2>Crypto deposit addresses — no payment processor</h2>
       <p class="seller-hint">
-        ${active
-          ? 'PAYMENT_PROVIDER=native_tron is active — checkout and wallet top-ups claim one address per order directly from this pool, no processor involved.'
-          : 'This pool is idle: PAYMENT_PROVIDER is not set to native_tron, so checkout/top-ups are not using it yet.'}
-        Generate addresses in your own wallet (never paste a private key or seed phrase — only public addresses) and add them below.
+        No payment provider ever touches these — each order claims one pre-generated address straight from the pool. Generate addresses in your own wallet software for the network you're pooling (never paste a private key or seed phrase — only public addresses) and add them below. Only one network is actually live at a time, whichever <code>PAYMENT_PROVIDER</code> is set to; the others just sit ready.
       </p>
-      ${ui.stats([
-        { k: 'Available', v: pool.available },
-        { k: 'Assigned to orders', v: pool.assigned },
-      ])}
+      <div class="admin-table-wrap" style="margin-bottom:16px">
+        <table class="admin-table">
+          <thead><tr><th>Network</th><th>Available</th><th>Assigned</th><th></th></tr></thead>
+          <tbody>
+            ${networks.map(n => `
+              <tr${n.network === selected ? ' style="background:var(--surface-3)"' : ''}>
+                <td>${esc(n.label)}${n.network === activeNetwork ? ' <span class="badge ok">active</span>' : ''}</td>
+                <td class="mono">${n.available}</td>
+                <td class="mono">${n.assigned}</td>
+                <td><button class="btn btn-ghost btn-sm" type="button" data-pick="${esc(n.network)}">${n.network === selected ? 'Selected' : 'Select'}</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <h3>${esc(pool.label || selected)}</h3>
       <form id="cryptoAddrForm">
         <label class="sf"><span>Addresses — one per line</span>
-          <textarea id="cryptoAddrList" rows="6" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX&#10;TYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY" style="width:100%;font-family:monospace"></textarea>
+          <textarea id="cryptoAddrList" rows="6" placeholder="one address per line" style="width:100%;font-family:monospace"></textarea>
         </label>
         <button class="btn btn-pri" type="submit" id="cryptoAddrAdd" style="margin-top:8px">Add to pool</button>
       </form>
       <div id="cryptoAddrResult"></div>
     </section>`;
+
+  root.querySelectorAll('[data-pick]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      ctx.state.cryptoNetwork = btn.dataset.pick;
+      ctx.showTab('crypto');
+    });
+  });
 
   $('#cryptoAddrForm')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -193,7 +210,7 @@ async function renderCrypto(ctx) {
     if (!raw.trim()) return;
     if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
     try {
-      const res = await api('/api/admin/crypto-addresses', { method: 'POST', body: { network: NETWORK, addresses: raw } });
+      const res = await api('/api/admin/crypto-addresses', { method: 'POST', body: { network: selected, addresses: raw } });
       const box = $('#cryptoAddrResult');
       box.innerHTML = `<div class="seller-banner banner-ok" style="margin-top:12px">Added ${res.added}${res.duplicates ? `, skipped ${res.duplicates} duplicate(s)` : ''}. Pool now: ${res.stats.available} available, ${res.stats.assigned} assigned.</div>`;
       toast(`Added ${res.added} address(es)`, 'ok');
