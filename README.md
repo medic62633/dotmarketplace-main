@@ -72,10 +72,17 @@ production.
 | `DEMO_AUTH` | Local-only auth/payment shortcuts. **Forbidden in production**, enforced by `validateEnv()`. |
 | `SESSION_TTL_DAYS` | How long a session token stays valid after signin (default 30). |
 | `STOCK_SECRET`, `STOCK_SECRET_OLD` | AES-256-GCM key encrypting stocked credential inventory at rest. Required in production; `_OLD` supports key rotation without invalidating existing stock. |
-| `PAYMENT_PROVIDER` | `oxapay` (default), `cryptomus`, or `native_tron` (see "Native crypto payments" below). |
+| `PAYMENT_PROVIDER` | `oxapay` (default), `cryptomus`, or one native no-processor chain: `native_tron`, `native_eth`, `native_bsc`, `native_sol`, `native_sol_usdt`, `native_btc`, `native_ltc` (see "Native crypto payments" below). |
 | `OXAPAY_MERCHANT_API_KEY` (or `OXAPAY_API_KEY`), `OXAPAY_SANDBOX`, `OXAPAY_FEE_PERCENT` | OxaPay crypto checkout. Without a key, the app runs wallet-only (no crypto deposits/checkout). |
 | `CRYPTOMUS_MERCHANT_ID`, `CRYPTOMUS_API_KEY`, `CRYPTOMUS_FEE_PERCENT` | Cryptomus, if used as the provider instead. |
-| `TRONGRID_API_KEY`, `NATIVE_TRON_API_BASE`, `NATIVE_TRON_USDT_CONTRACT`, `NATIVE_TRON_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_tron`. See "Native crypto payments" below — **unverified against a real chain, needs testnet validation first.** |
+| `TRONGRID_API_KEY`, `NATIVE_TRON_API_BASE`, `NATIVE_TRON_USDT_CONTRACT`, `NATIVE_TRON_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_tron`. |
+| `NATIVE_ETH_RPC_URL`, `NATIVE_ETH_USDT_CONTRACT`, `NATIVE_ETH_USDT_DECIMALS`, `NATIVE_ETH_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_eth`. |
+| `NATIVE_BSC_RPC_URL`, `NATIVE_BSC_USDT_CONTRACT`, `NATIVE_BSC_USDT_DECIMALS`, `NATIVE_BSC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_bsc`. |
+| `NATIVE_SOL_RPC_URL`, `NATIVE_SOL_USDT_MINT`, `NATIVE_SOL_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_sol` or `native_sol_usdt`. |
+| `NATIVE_BTC_API_BASE`, `NATIVE_BTC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_btc`. |
+| `NATIVE_LTC_API_BASE`, `NATIVE_LTC_CONFIRM_SECONDS` | Only used when `PAYMENT_PROVIDER=native_ltc`. |
+
+All seven `native_*` providers are **unverified against a real chain, and need testnet validation before mainnet** — see "Native crypto payments" below.
 | `PLATFORM_FEE_PERCENT` | Marketplace's cut of each sale. |
 | `PAYMENT_PENDING_TTL_MS` | How long a pending crypto invoice stays payable before expiring. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Outbound email (verification codes, notifications). Without SMTP configured, verification codes are returned in the API response instead (dev convenience). |
@@ -149,9 +156,10 @@ Before flipping real traffic on:
 - [ ] `npm run db:backup` is on a cron job (see Backups below)
 - [ ] Something polls `GET /healthz` (uptime monitor, PM2 healthcheck) — see
       Reliability & outages
-- [ ] If using `PAYMENT_PROVIDER=native_tron`: testnet-verified first, per
-      "Native crypto payments" below — this is custody code, treat it with
-      more suspicion than everything else on this list combined
+- [ ] If using any `PAYMENT_PROVIDER=native_*`: that specific chain
+      testnet-verified first, per "Native crypto payments" below — this is
+      custody code, treat it with more suspicion than everything else on
+      this list combined
 
 ## Deployment
 
@@ -234,47 +242,72 @@ real collections. Worth running once after any Mongo version/tier change.
 
 ## Native crypto payments (no processor)
 
-`PAYMENT_PROVIDER=native_tron` accepts USDT on TRON (TRC-20) directly —
-no OxaPay/Cryptomus, no processor cut. It works entirely from a
-**pre-generated address pool**, the same pool/claim pattern this codebase
-already uses for seller credential stock (`lib/stock-store.js`):
+`PAYMENT_PROVIDER` can be set to one of seven native (no OxaPay/Cryptomus,
+no processor cut) chains — `native_tron` (USDT-TRC20), `native_eth`
+(USDT-ERC20), `native_bsc` (USDT-BEP20), `native_sol` (native SOL),
+`native_sol_usdt` (USDT-SPL), `native_btc` (Bitcoin), `native_ltc`
+(Litecoin). Only one is active at a time — whichever `PAYMENT_PROVIDER` is
+set to — but the admin portal's **Crypto** tab manages address pools for
+all seven, so switching later is just changing the env var once the new
+chain's pool has addresses in it.
 
-1. You generate real TRON addresses yourself, in your own wallet software
-   (TronLink, a hardware wallet, whatever you trust). This app **never**
-   generates or holds a private key or seed phrase — only ever paste public
+Every one works the same way, off a **pre-generated address pool** — the
+same pool/claim pattern this codebase already uses for seller credential
+stock (`lib/stock-store.js`):
+
+1. You generate real addresses yourself, in your own wallet software for
+   that chain (TronLink, MetaMask, a Solana wallet, a Bitcoin/Litecoin
+   wallet — whatever you trust). This app **never** generates or holds a
+   private key or seed phrase for any chain — only ever paste public
    addresses, on the admin portal's **Crypto** tab (`POST
-   /api/admin/crypto-addresses`).
+   /api/admin/crypto-addresses`, `{ network, addresses }`).
 2. Each order (wallet top-up or checkout) atomically claims one unfunded
-   address from the pool — idempotent per order, same address on a retry,
-   never handed to two orders (`lib/crypto-address-store.js`).
-3. `lib/payments/native-tron.js` polls TronGrid for a matching USDT-TRC20
-   transfer into that address. Once one is observed, the order waits out
-   `NATIVE_TRON_CONFIRM_SECONDS` (default 60s) — a wall-clock stand-in for
-   TRON's block-confirmation count — before crediting the wallet or
-   releasing escrow, via the exact same `markPaid`/`creditDeposit` path
-   OxaPay payments already use.
-4. There's no webhook (nothing to call one) — status is poll-driven, off
-   the buyer's own top-up/checkout page, same as OxaPay's non-webhook
-   fallback path already works today.
+   address from that network's pool — idempotent per order, same address on
+   a retry, never handed to two orders (`lib/crypto-address-store.js`, one
+   pool shared structurally across all networks, keyed by network).
+3. The matching module in `lib/payments/` — `native-tron.js`,
+   `native-evm.js` (shared by `native_eth`/`native_bsc`), `native-solana.js`
+   (shared by `native_sol`/`native_sol_usdt`), or `native-utxo.js` (shared
+   by `native_btc`/`native_ltc`) — polls that chain for a matching transfer
+   into the claimed address. Once observed, the order waits out that
+   provider's `*_CONFIRM_SECONDS` (a wall-clock stand-in for the chain's own
+   block-confirmation count, except Bitcoin/Litecoin, whose esplora-style
+   API only reports already-confirmed totals to begin with) before crediting
+   the wallet or releasing escrow — via the exact same
+   `markPaid`/`creditDeposit` path OxaPay payments already use.
+4. None of them have a webhook (nothing to call one) — status is
+   poll-driven, off the buyer's own top-up/checkout page, same as OxaPay's
+   non-webhook fallback path already works today.
 
-**This has not been run against a real chain.** Development happened in a
-sandbox with no outbound network access to TronGrid or any blockchain
-RPC/explorer — address-pool claiming (deterministic, offline logic) is
-covered by `test/native-tron-payments.test.js`, but
-`checkAddressForPayment`'s actual TronGrid call has only been read against
-TronGrid's documented API, never executed. **Before pointing this at
-mainnet funds:**
+**None of this has been run against a real chain.** Development happened in
+a sandbox with no outbound network access to TronGrid, any Ethereum/BSC
+RPC, any Solana RPC, or any Bitcoin/Litecoin explorer — address-pool
+claiming (deterministic, offline logic, identical across all seven) is
+covered by `test/native-crypto-payments.test.js`, but every provider's
+actual `checkAddressForPayment` chain call has only been read against each
+chain's documented API, never executed. `lib/payments/native-evm.js`'s
+`createInvoice` already needed one bugfix from just trying this locally — a
+transient RPC failure at invoice-creation time was making checkout fail
+outright instead of degrading gracefully — which is exactly the class of
+bug testnet verification exists to catch before it's mainnet money. **Before
+pointing any of these at mainnet funds:**
 
-- Set `NATIVE_TRON_API_BASE=https://api.shasta.trongrid.io` (or Nile) and
-  `NATIVE_TRON_USDT_CONTRACT` to a real testnet USDT-equivalent token, pool
-  a testnet address, and run a real top-up end to end.
-- Have someone else read `lib/payments/native-tron.js` and the
-  `native_tron` branches in `lib/payment-routes.js` / `lib/wallet-routes.js`
-  before trusting it with money you can't afford to lose — this is custody
-  code, not a feature you can patch your way out of after the fact.
-- Consider whether `NATIVE_TRON_CONFIRM_SECONDS`'s wall-clock approach is
-  conservative enough for your risk tolerance; it is a simple, honest proxy
-  for TRON finality, not a guarantee.
+- Testnet-verify that specific chain end to end (Shasta/Nile for TRON;
+  Sepolia for Ethereum; BSC Testnet; Solana devnet/testnet; Bitcoin
+  testnet/signet; Litecoin testnet) — point the relevant `*_API_BASE` /
+  `*_RPC_URL` at the testnet, pool a testnet address, and run a real top-up.
+- Have someone else read that chain's provider module and the generic
+  `NATIVE_PROVIDERS` dispatch in `lib/payment-routes.js` /
+  `lib/wallet-routes.js` before trusting it with money you can't afford to
+  lose — this is custody code, not a feature you can patch your way out of
+  after the fact.
+- Double-check the default `*_API_BASE`/`*_RPC_URL`/contract-or-mint address
+  for that chain is actually correct and currently live — several (notably
+  `NATIVE_LTC_API_BASE`) were set from documentation/memory, not confirmed
+  reachable, because this environment couldn't reach them either.
+- Consider whether that provider's `*_CONFIRM_SECONDS` default is
+  conservative enough for your risk tolerance; it's a simple, honest proxy
+  for chain finality, not a guarantee.
 
 ## Architecture notes
 

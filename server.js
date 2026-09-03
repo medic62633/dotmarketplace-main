@@ -1293,7 +1293,7 @@ connectDb().then(async () => {
   stockStore = createStockStore({ memory, stockCol });
   verificationStore = createVerificationStore({ memory, verificationsCol });
   cryptoAddressStore = createCryptoAddressStore({ memory, cryptoAddressesCol });
-  payments.nativeTron.configure({ cryptoAddressStore });
+  payments.configureNativeProviders({ cryptoAddressStore });
   await ensureBootstrapAdmin();
   // Quota bookkeeping: unprefixed orphan chat images are spread across owners.
   try {
