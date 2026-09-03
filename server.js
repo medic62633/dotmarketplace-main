@@ -16,6 +16,7 @@ function ensureChatUploadDir() {
 const { parseImageDataUrl } = require('./lib/image-upload');
 const { isId } = require('./lib/validate');
 const { formatPayMethod } = require('./lib/payment-labels');
+const { applySchemas } = require('./lib/schemas');
 
 /* Orphaned (unprefixed) chat images predate owner prefixes and count toward NO
  * quota; spread their bytes across all owners so they can't be used to bypass
@@ -211,6 +212,12 @@ app.use(express.static('public'));
 
 /* ---------- storage layer: MongoDB when configured, in-memory dev store otherwise ---------- */
 let mongoClient, usersCol, statesCol, conversationsCol, messagesCol, listingsCol, sellerProfilesCol, withdrawalsCol, paymentsCol, escrowsCol, walletsCol, reviewsCol, invitesCol, stockCol, verificationsCol, memory = null;
+// Whether the connected Mongo can run multi-document transactions (a replica
+// set — Atlas always is; a bare `docker run mongo` standalone is not).
+// Detected once at boot; money-path stores fall back to their pre-transaction
+// sequential-writes behavior when this is false, so a standalone deployment
+// sees no behavior change from before transactions existed here.
+let txnSupported = false;
 
 // Demo-only auth shortcut (passwordless seller inbox login). Off by default —
 // must be explicitly enabled for local demos.
@@ -326,12 +333,32 @@ async function ensureIndexes() {
     safe(invitesCol, { email: 1, status: 1 }),
     // Auto-purge expired invites so the collection doesn't grow unbounded.
     safe(invitesCol, { expiresAt: 1 }, { expireAfterSeconds: 0 }),
-    // Credential stock: fast available-unit claim per listing + order lookup.
-    safe(stockCol, { listingId: 1, status: 1 }),
-    safe(stockCol, { orderId: 1 }, { sparse: true }),
+    // Credential stock: fast available-unit claim per listing+variant, and
+    // order lookup. reserveOne/countAvailable always filter on all three
+    // fields together (a listing's variants each keep a separate pool), so
+    // the compound index needs variantId in it too, not just listingId+status.
+    safe(stockCol, { listingId: 1, variantId: 1, status: 1 }),
     // Auto-purge expired verification codes.
     safe(verificationsCol, { expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    // Admin/reconciliation views filter payments by status.
+    safe(paymentsCol, { status: 1, createdAt: -1 }),
   ]);
+  // A stock unit's orderId is its one-buyer invariant: at most one unit may
+  // point at a given order. Unique + a partial filter (rather than plain
+  // sparse) — every doc has an `orderId` field, usually `null` while
+  // available, and a sparse index still indexes explicit nulls, so a plain
+  // unique+sparse index would allow only one available (orderId: null) unit
+  // in the whole collection. Best-effort like the other non-critical
+  // indexes above (not `critical`): unlike payments.orderId/invites.tokenHash,
+  // this isn't the app's only defense against a double-claim (reserveOne's
+  // conditional findOneAndUpdate already is), so if it can't be built because
+  // pre-existing data has a duplicate, warn instead of blocking boot.
+  await safe(
+    stockCol,
+    { orderId: 1 },
+    { unique: true, partialFilterExpression: { orderId: { $type: 'string' } } }
+  );
+  await applySchemas(mongoClient.db('dotmarket'));
 }
 
 async function connectDb() {
@@ -373,6 +400,17 @@ async function connectDb() {
     mongoClient = client;
     const host = uri.startsWith('mongodb+srv://') ? 'MongoDB Atlas' : uri.replace(/\/\/([^@]+@)?/, '//');
     console.log('✓ Connected to MongoDB (' + host + ')');
+    // Multi-document transactions need a replica set (Atlas always is one; a
+    // bare `docker run mongo` standalone isn't). `hello` reports `setName`
+    // only when the node is part of one — a safe, read-only, no-privilege
+    // check to run once at boot rather than probing with a real transaction.
+    try {
+      const hello = await db.admin().command({ hello: 1 });
+      txnSupported = !!hello.setName;
+    } catch (_) {
+      txnSupported = false;
+    }
+    console.log('   Transactions: ' + (txnSupported ? 'supported (replica set)' : 'not supported (standalone) — money-path writes stay sequential'));
     await ensureIndexes();
   } catch (err) {
     try { await client.close(); } catch (_) {}
@@ -1150,7 +1188,7 @@ app.post('/api/seller-invite/claim', authLimiter, async (req, res) => {
 
 validateEnv();
 connectDb().then(async () => {
-  sellerStore = createSellerStore({ memory, listingsCol, sellerProfilesCol, withdrawalsCol, escrowsCol, reviewsCol });
+  sellerStore = createSellerStore({ memory, listingsCol, sellerProfilesCol, withdrawalsCol, escrowsCol, reviewsCol, mongoClient, txnSupported });
   paymentStore = createPaymentStore({ memory, paymentsCol });
   walletStore = createWalletStore({ memory, walletsCol });
   inviteStore = createInviteStore({ memory, invitesCol });

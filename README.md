@@ -39,11 +39,17 @@ sign-in, simulated wallet top-ups when no payment provider is configured).
 ## Quick start (with MongoDB)
 
 ```bash
-npm run db:up          # starts a local Mongo container
+npm run db:up          # starts a local Mongo container (as a single-node replica set)
 cp .env.example .env   # if present, or create .env — see Configuration below
 npm start
 npm run db:down        # stop the container when done
 ```
+
+`db:up` runs the container with `--replSet rs0` and initiates it, so
+`MONGODB_URI=mongodb://127.0.0.1:27017/dotmarket?replicaSet=rs0` locally —
+matching Atlas (always a replica set) closely enough that the transaction-
+wrapped money paths (see Architecture notes) actually run transactionally in
+local dev too, instead of silently falling back.
 
 ## Configuration
 
@@ -118,6 +124,31 @@ a single persistent instance, but they won't survive an ephemeral filesystem
 or be shared across multiple instances if you ever scale horizontally.
 Rate limiting is likewise in-memory per process, not shared across instances.
 
+## Backups
+
+```bash
+npm run db:backup                 # dumps MONGODB_URI to backups/dotmarket-<timestamp>.archive.gz
+KEEP=30 npm run db:backup         # keep the last 30 backups instead of the default 14
+npm run db:restore                # restores the newest backup, merging (upserts by _id)
+npm run db:restore -- --drop      # restores the newest backup, replacing collections wholesale
+npm run db:restore -- path/to/backup.archive.gz --drop
+```
+
+Both scripts read `MONGODB_URI` from `.env` and need the [MongoDB Database
+Tools](https://www.mongodb.com/try/download/database-tools) (`mongodump` /
+`mongorestore`) installed — on Atlas this backs up/restores over the network;
+there's no separate local step. `backups/` is gitignored: a dump is a full
+copy of the same money/PII data an accidentally-committed `.env` would leak,
+so treat the files themselves as secrets (encrypt them if you ship them off
+the VPS) and never commit one. `db:restore` always prints the target host and
+requires typing it back to confirm before touching data — there's no
+`--yes`/non-interactive flag on purpose.
+
+On the VPS, put `npm run db:backup` on a daily cron job and copy backups off
+the host periodically (Atlas also has its own continuous backup — this is
+the fast local recovery path for accidental data loss the app itself causes,
+e.g. a bad admin action, not a substitute for Atlas's backups).
+
 ## Architecture notes
 
 - **Auth**: bearer tokens (no cookies/sessions), rotated on every signin,
@@ -128,6 +159,13 @@ Rate limiting is likewise in-memory per process, not shared across instances.
   boot based on `MONGODB_URI`/`ALLOW_MEMORY_STORE`.
 - **Escrow**: `lib/seller-store.js` owns the state machine; wallet and crypto
   payments both fund the same `holdEscrow` path so delivery/dispute/release
-  logic doesn't need to know which payment method funded the deal.
+  logic doesn't need to know which payment method funded the deal. The
+  payout and refund paths (`creditSellerPayout`, `resolveEscrow`'s refund
+  branch) run their escrow-state claim and the actual money movement inside
+  a real multi-document Mongo transaction (`runTxn`) when the connected
+  Mongo is a replica set (Atlas, or a local `db:up` container); on a
+  standalone Mongo or the in-memory dev store, they fall back to the same
+  sequential atomic writes the app always used, so no deployment loses
+  correctness — only some gain stronger crash-safety.
 - **Portals**: the seller and admin frontends are served only under
   `PORTAL_SECRET_PATH`, never at a guessable path — see `lib/portal-access.js`.
