@@ -229,7 +229,7 @@ app.get('/uploads/chat/:file', async (req, res) => {
 app.use(express.static('public'));
 
 /* ---------- storage layer: MongoDB when configured, in-memory dev store otherwise ---------- */
-let mongoClient, usersCol, statesCol, conversationsCol, messagesCol, listingsCol, sellerProfilesCol, withdrawalsCol, paymentsCol, escrowsCol, walletsCol, reviewsCol, invitesCol, stockCol, verificationsCol, memory = null;
+let mongoClient, usersCol, statesCol, conversationsCol, messagesCol, listingsCol, sellerProfilesCol, withdrawalsCol, paymentsCol, escrowsCol, walletsCol, reviewsCol, invitesCol, stockCol, verificationsCol, cryptoAddressesCol, memory = null;
 // Whether the connected Mongo can run multi-document transactions (a replica
 // set — Atlas always is; a bare `docker run mongo` standalone is not).
 // Detected once at boot; money-path stores fall back to their pre-transaction
@@ -374,6 +374,9 @@ async function ensureIndexes() {
     safe(verificationsCol, { expiresAt: 1 }, { expireAfterSeconds: 0 }),
     // Admin/reconciliation views filter payments by status.
     safe(paymentsCol, { status: 1, createdAt: -1 }),
+    // Crypto address pool: fast available-address claim per network, and
+    // order lookup (same shape as the stock pool above).
+    safe(cryptoAddressesCol, { network: 1, status: 1 }),
   ]);
   // A stock unit's orderId is its one-buyer invariant: at most one unit may
   // point at a given order. Unique + a partial filter (rather than plain
@@ -389,6 +392,23 @@ async function ensureIndexes() {
     stockCol,
     { orderId: 1 },
     { unique: true, partialFilterExpression: { orderId: { $type: 'string' } } }
+  );
+  // Same invariant, same reasoning, for the crypto address pool.
+  await safe(
+    cryptoAddressesCol,
+    { orderId: 1 },
+    { unique: true, partialFilterExpression: { orderId: { $type: 'string' } } }
+  );
+  // An address itself must never be pooled twice (two orders claiming the
+  // same deposit address would be indistinguishable on-chain) — this one IS
+  // the app's only defense (addAddresses's own dedupe only catches repeats
+  // within a single paste), so it's `critical`: refuse to boot rather than
+  // silently allow a duplicate address to enter the pool.
+  await critical(
+    cryptoAddressesCol,
+    { network: 1, address: 1 },
+    { unique: true },
+    'crypto_addresses.(network,address)'
   );
   await applySchemas(mongoClient.db('dotmarket'));
 }
@@ -424,7 +444,7 @@ async function connectDb() {
     if (!allowMemoryStore()) {
       throw new Error('MONGODB_URI is not set and the in-memory store is disabled in this environment. Set MONGODB_URI, or ALLOW_MEMORY_STORE=true for local dev.');
     }
-    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map() };
+    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map(), cryptoAddresses: new Map() };
     console.log('⚠  MONGODB_URI not set — running on in-memory store (data lost on restart).');
     console.log('   Create .env with MONGODB_URI=mongodb://127.0.0.1:27017/dotmarket (local) or mongodb+srv://... (Atlas).');
     return;
@@ -454,6 +474,7 @@ async function connectDb() {
     invitesCol = db.collection('invites');
     stockCol = db.collection('stock');
     verificationsCol = db.collection('email_verifications');
+    cryptoAddressesCol = db.collection('crypto_addresses');
     mongoClient = client;
     // The driver reconnects on its own and existing operations already
     // retry (retryWrites/retryReads in the URI) — this is purely visibility:
@@ -500,7 +521,7 @@ async function connectDb() {
     if (!allowMemoryStore()) {
       throw new Error('MongoDB connection failed and the in-memory fallback is disabled in this environment. Refusing to start with ephemeral money state.');
     }
-    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map() };
+    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map(), cryptoAddresses: new Map() };
     console.error('   Falling back to in-memory store (local/dev only — data lost on restart).');
   }
 }
@@ -539,6 +560,7 @@ const { createInviteStore } = require('./lib/invite-store');
 const { createStockStore } = require('./lib/stock-store');
 const { registerStockRoutes } = require('./lib/stock-routes');
 const { createVerificationStore } = require('./lib/verification-store');
+const { createCryptoAddressStore } = require('./lib/crypto-address-store');
 const { autoDeliver } = require('./lib/stock-deliver');
 const mailer = require('./lib/mailer');
 const templates = require('./lib/email-templates');
@@ -552,6 +574,7 @@ let walletStore;
 let inviteStore;
 let stockStore;
 let verificationStore;
+let cryptoAddressStore;
 
 async function sellerProfileFor(user) {
   if (!user?.isSeller) return null;
@@ -1269,6 +1292,8 @@ connectDb().then(async () => {
   inviteStore = createInviteStore({ memory, invitesCol });
   stockStore = createStockStore({ memory, stockCol });
   verificationStore = createVerificationStore({ memory, verificationsCol });
+  cryptoAddressStore = createCryptoAddressStore({ memory, cryptoAddressesCol });
+  payments.nativeTron.configure({ cryptoAddressStore });
   await ensureBootstrapAdmin();
   // Quota bookkeeping: unprefixed orphan chat images are spread across owners.
   try {
@@ -1284,7 +1309,7 @@ connectDb().then(async () => {
     onDelivered: notify.notifyCredential,
   });
   const paymentApi = registerPaymentRoutes(app, {
-    authUser, paymentStore, sellerStore, walletStore, paymentLimiter, stockStore,
+    authUser, paymentStore, sellerStore, walletStore, paymentLimiter, stockStore, cryptoAddressStore,
     onPaymentPaid: async (doc) => {
       notify.notifyPaid(doc);
       await deliverForOrder(doc.orderId);
@@ -1295,7 +1320,7 @@ connectDb().then(async () => {
   });
   registerAdminRoutes(app, {
     authUser, store, sellerStore, paymentStore, withdrawalsCol, memory, listingsCol, usersCol, walletStore,
-    inviteStore, portalAccess, stockStore, sellerProfilesCol, paymentsCol,
+    inviteStore, portalAccess, stockStore, sellerProfilesCol, paymentsCol, cryptoAddressStore,
   });
   ensureChatUploadDir();
   ensureListingUploadDir(path.join(__dirname, 'public'));
