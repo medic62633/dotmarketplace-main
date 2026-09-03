@@ -254,6 +254,9 @@ function validateEnv() {
   }
   if (isProd) {
     if (process.env.DEMO_AUTH === 'true') problems.push('DEMO_AUTH=true is not allowed in production.');
+    if (process.env.ALLOW_MEMORY_STORE === 'true') {
+      problems.push('ALLOW_MEMORY_STORE=true is not allowed in production — it runs on a volatile in-memory store that loses all wallets/escrows/payments on every restart. Remove it; a real MongoDB connection failure should fail boot loudly, not silently degrade to memory.');
+    }
     if (!process.env.ADMIN_PASSWORD) {
       problems.push('ADMIN_PASSWORD is required in production — the bootstrap admin defaults to the world-known "test12345".');
     }
@@ -289,11 +292,19 @@ async function fetchPublicIp() {
 }
 
 // In-memory fallback is fine for local hacking, but catastrophic in a real
-// deploy (wallets/escrows/payments vanish on restart). Only allow it outside
-// production or when explicitly opted in via ALLOW_MEMORY_STORE=true.
+// deploy (wallets/escrows/payments vanish on restart) — including the
+// *silent* fallback on a transient MONGODB_URI connect failure below.
+// NODE_ENV=production is checked FIRST and always wins, even over an
+// explicit ALLOW_MEMORY_STORE=true: that flag is a local-dev convenience
+// (see README), not a production override, and a leftover
+// ALLOW_MEMORY_STORE=true from an old debug session must never let a
+// production deploy quietly run — and lose data — on volatile memory
+// instead of refusing to boot. (validateEnv() also hard-blocks this
+// combination with a clear error, so it's caught before this function
+// is even consulted for that reason — this ordering is the second layer.)
 function allowMemoryStore() {
-  if (process.env.ALLOW_MEMORY_STORE === 'true') return true;
   if (process.env.NODE_ENV === 'production') return false;
+  if (process.env.ALLOW_MEMORY_STORE === 'true') return true;
   const url = process.env.PUBLIC_URL || '';
   if (url && !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?\/?$/i.test(url)) return false;
   return true;
@@ -361,6 +372,31 @@ async function ensureIndexes() {
   await applySchemas(mongoClient.db('dotmarket'));
 }
 
+/* Retry the initial Mongo connection with backoff before giving up. A
+ * transient Atlas hiccup at boot (brief network blip, a primary election
+ * during failover/maintenance) can outlast a single connect attempt even
+ * with a generous 30s timeout — without a retry here, that one unlucky
+ * moment at process start is what silently tips a misconfigured production
+ * deploy into the in-memory fallback (or, correctly configured, crashes it
+ * needlessly). Not attempted for errors a retry can never fix (e.g. bad
+ * auth) — but distinguishing those reliably from real transients isn't
+ * worth the complexity here, so every failure gets the same bounded retry;
+ * worst case that costs ~60s of extra boot time once, not a data-loss risk. */
+async function connectWithRetry(client) {
+  const delaysMs = [2000, 4000, 8000, 16000, 30000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await client.connect();
+      return;
+    } catch (err) {
+      if (attempt >= delaysMs.length) throw err;
+      const wait = delaysMs[attempt];
+      console.warn(`   MongoDB connect attempt ${attempt + 1}/${delaysMs.length + 1} failed (${err.message.split('\n')[0]}) — retrying in ${wait / 1000}s...`);
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+}
+
 async function connectDb() {
   const uri = process.env.MONGODB_URI;
   if (!uri) {
@@ -381,7 +417,7 @@ async function connectDb() {
     socketTimeoutMS: 45000,
   });
   try {
-    await client.connect();
+    await connectWithRetry(client);
     const db = client.db('dotmarket');
     usersCol = db.collection('users');
     statesCol = db.collection('states');

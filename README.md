@@ -61,7 +61,7 @@ production.
 | Variable | Purpose |
 |---|---|
 | `MONGODB_URI` | MongoDB connection string. Required unless `ALLOW_MEMORY_STORE=true`. |
-| `ALLOW_MEMORY_STORE` | `true` to run without MongoDB (dev only). |
+| `ALLOW_MEMORY_STORE` | `true` to run without MongoDB (dev only — **forbidden in production**, enforced by `validateEnv()`, same as `DEMO_AUTH`). A failed `MONGODB_URI` connection is retried with backoff (up to ~60s total) before the app falls back to it outside production, or refuses to boot in production. |
 | `PORT` | HTTP port (default `3000`). |
 | `NODE_ENV` | `production` enables stricter config validation (see below). |
 | `PUBLIC_URL` | The public https origin — used for payment callback URLs. Should not be `localhost` in production. |
