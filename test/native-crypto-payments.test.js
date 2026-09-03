@@ -156,6 +156,35 @@ test('escrow checkout on a non-USD-pegged native chain also converts the listing
   assert.equal(res.json.payment.payAmountUsd, 130);
 });
 
+test('checkout is refused rather than minting a payAmount of 0 when the converted amount is too small to represent', async (t) => {
+  // A very low listing price against an (unrealistically, but not
+  // impossibly) high coin price can convert to less than one unit at that
+  // currency's decimal precision. A payAmount of 0 isn't just an unpayable
+  // invoice — checkAddressForPayment's "balance rose by at least
+  // expectedAmount" check trivially passes for a delta of 0 too, so it
+  // would report ANY order paid with zero on-chain evidence. Must fail the
+  // checkout instead of ever minting that invoice.
+  const srv = await startServer({ PAYMENT_PROVIDER: 'native_sol', NATIVE_SOL_USD_RATE: '2000000' });
+  t.after(() => srv.stop());
+  const { api } = srv;
+
+  const admin = await adminToken(api);
+  await api('POST', '/api/admin/crypto-addresses', { token: admin, body: { network: 'sol-native', addresses: fakeAddress('', 3) } });
+
+  const sellerTok = await verifiedSeller(api, admin, 'seller-tiny@example.com', 'Seller');
+  const item = await listing(api, sellerTok, { price: 0.01 }); // $0.01 / $2,000,000 per SOL rounds to 0 at 6dp
+
+  await api('POST', '/api/auth/signup', { body: { email: 'buyer-tiny@example.com', password: 'test12345', name: 'Buyer' } });
+  const signin = await api('POST', '/api/auth/signin', { body: { email: 'buyer-tiny@example.com', password: 'test12345' } });
+
+  const res = await api('POST', '/api/payments/escrow', {
+    token: signin.json.token,
+    body: { orderId: 'ORD-' + Date.now(), listingId: item.id, method: 'crypto' },
+  });
+  assert.notEqual(res.status, 200, JSON.stringify(res.json));
+  assert.doesNotMatch(JSON.stringify(res.json), /"payAmount":\s*0\b/, 'never mints an invoice quoting 0 as the amount to send');
+});
+
 test('checkout on a non-USD-pegged native chain fails loudly (never falls back to a 1:1 amount) when no exchange rate is available', async (t) => {
   // No NATIVE_BTC_USD_RATE override, and NATIVE_FX_API_BASE points at a
   // guaranteed-unreachable address (nothing listens on 127.0.0.1:1) so the
