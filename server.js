@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
+// Express sets this by default, advertising the framework to anyone probing
+// the site — no functional purpose, pure fingerprinting surface for an
+// attacker picking which known CVEs to try.
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3000;
 const CHAT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'chat');
 const MAX_CHAT_IMAGE_BYTES_PER_USER = 20 * 1024 * 1024; // 20 MB of chat images per account
@@ -94,15 +98,25 @@ app.use((req, res, next) => {
   // Only meaningful over HTTPS (browsers ignore it on plain HTTP), so it's
   // safe to send unconditionally; local dev over http:// is unaffected.
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // Isolates this origin's browsing context/resources from other origins —
+  // mitigates cross-origin Spectre-style data leaks and cross-window
+  // (window.opener) access. Safe here: everything the app loads (images,
+  // fonts, uploads) is self-hosted, and no page embeds this site or is
+  // embedded by it (frame-ancestors 'none' below already forbids embedding).
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   // CSP: self + inline styles + data: images/fonts. NO 'unsafe-inline' scripts —
   // session tokens live in localStorage, so one XSS would otherwise exfiltrate
   // every signed-in session. All SPA scripts are external files. font-src allows
   // 'self' + data: because the site's webfonts are self-hosted as base64 @font-face
   // data URIs (public/css/fonts.css) — no third-party font host is ever contacted.
+  // object-src/form-action are locked down too — nothing here embeds a plugin
+  // or submits a native <form>, everything goes through fetch().
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; " +
-    "font-src 'self' data:; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    "font-src 'self' data:; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; " +
+    "base-uri 'self'; object-src 'none'; form-action 'self'"
   );
   next();
 });
@@ -290,6 +304,17 @@ function validateEnv() {
   }
   if (process.env.TRUST_PROXY === 'true') {
     warnings.push('TRUST_PROXY=true — ensure your reverse proxy overwrites X-Forwarded-For, otherwise IP allowlists and rate limiting can be spoofed.');
+  } else if (isProd) {
+    // The opposite misconfiguration is both more common and more dangerous,
+    // and silent: almost every production deploy sits behind SOME proxy
+    // (nginx, a load balancer, Cloudflare). Without TRUST_PROXY, req.ip is
+    // the proxy's own address for every request — every rate limiter
+    // (signin/signup, writes, payments) collapses onto ONE shared bucket
+    // across ALL users, and the portal IP allowlist either matches everyone
+    // or no one. Nothing throws or fails a request when this is wrong; it
+    // just quietly breaks under real traffic. Not auto-detectable from here
+    // (a single-instance deploy with no proxy legitimately wants this off).
+    warnings.push('TRUST_PROXY is not set to true. If this deploys behind a reverse proxy or load balancer, set TRUST_PROXY=true — otherwise every client appears as the proxy\'s IP, and rate limiting / the portal IP allowlist silently apply to all users as one, not per-client. Leave unset only for a deploy with no proxy in front of it.');
   }
   const nativeProviderKeys = ['native_tron', 'native_eth', 'native_bsc', 'native_sol', 'native_sol_usdt', 'native_btc', 'native_ltc'];
   if (!nativeProviderKeys.includes((process.env.PAYMENT_PROVIDER || '').toLowerCase())) {
