@@ -115,6 +115,40 @@ requirement, and seller verification.
 There's no CI-only test database to manage — tests always run against
 `ALLOW_MEMORY_STORE=true`, regardless of your local `.env`.
 
+## Going to production
+
+Copy `.env.example` to `.env` and fill in real values — `.env` itself is
+gitignored and must never be committed (this repo's history already has one
+example of why: a `.env` was committed once, its secrets are compromised,
+and rotating every one of them — Mongo, OxaPay, admin password, SMTP,
+`STOCK_SECRET` — plus scrubbing it from git history is the standing
+follow-up on this repo; if that hasn't happened yet, treat it as blocking).
+
+With `NODE_ENV=production`, `validateEnv()` fails boot (not just a warning)
+if any of these are missing or wrong:
+
+- `ADMIN_PASSWORD` — set, not the "test12345" default
+- `STOCK_SECRET` — set, a real random value (see `.env.example`)
+- `PORTAL_SECRET_PATH` — set (via `lib/portal-access.js`'s own boot check,
+  not `validateEnv()`), an unguessable value
+- `DEMO_AUTH` and `ALLOW_MEMORY_STORE` — must NOT be `true`
+- `MONGODB_URI` — set, pointing at a real (ideally replica-set — see
+  Reliability & outages below) MongoDB
+
+Before flipping real traffic on:
+
+- [ ] `npm run db:verify` against the production `MONGODB_URI` (safe — see
+      Reliability & outages)
+- [ ] `OXAPAY_SANDBOX=false` once you're ready to accept live payments, not
+      before
+- [ ] `PUBLIC_URL` is the real `https://` origin (payment callback URLs are
+      built from it)
+- [ ] A reverse proxy terminates TLS in front of the app (`scripts/deploy-vps.sh`
+      sets up nginx + Let's Encrypt) — the app itself speaks plain HTTP
+- [ ] `npm run db:backup` is on a cron job (see Backups below)
+- [ ] Something polls `GET /healthz` (uptime monitor, PM2 healthcheck) — see
+      Reliability & outages
+
 ## Deployment
 
 `scripts/deploy-vps.sh` / `scripts/upload-to-vps.sh` target a single VPS
