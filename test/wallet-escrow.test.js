@@ -54,6 +54,43 @@ test('wallet/pay rejects an amount below wallet balance with 402, not a partial 
   assert.equal(wallet.balance, 10, 'a rejected purchase never touches the wallet balance');
 });
 
+test('wallet/pay does not let a duplicate retry after a price change corrupt the stored order amount', async (t) => {
+  // walletStore.debitForDeal is correctly idempotent per dealId (never
+  // re-debits a duplicate call), but the payment record written alongside it
+  // used to recompute the amount fresh from the listing's CURRENT price on
+  // every call, including a duplicate — so a retried /api/wallet/pay for the
+  // same dealId, after the seller edited the listing's price, silently
+  // rewrote the buyer/seller-visible order record (and would have skewed a
+  // payment-confirmation email, had one fired twice) to an amount that was
+  // never actually charged. The real money (wallet debit, escrow hold) was
+  // never wrong — only this display/audit record was at risk.
+  const srv = await startServer();
+  t.after(() => srv.stop());
+  const { api } = srv;
+
+  const admin = await adminToken(api);
+  const sellerTok = await verifiedSeller(api, admin, 'erin@example.com', 'Erin');
+  const item = await listing(api, sellerTok, { price: 20 });
+  const buyerTok = await fundedBuyer(api, 'buyer-dup@example.com', 50);
+
+  const dealId = 'D-dup-price-' + Date.now();
+  const first = await api('POST', '/api/wallet/pay', { token: buyerTok, body: { dealId, listingId: item.id, title: item.title } });
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+  assert.equal(first.json.wallet.balance, 30);
+
+  await api('PUT', '/api/seller/listings/' + item.id, { token: sellerTok, body: { price: 99 } });
+
+  const retry = await api('POST', '/api/wallet/pay', { token: buyerTok, body: { dealId, listingId: item.id, title: item.title } });
+  assert.equal(retry.status, 200, JSON.stringify(retry.json));
+  assert.equal(retry.json.duplicate, true);
+  assert.equal(retry.json.wallet.balance, 30, 'never double-charged');
+
+  const orders = await api('GET', '/api/buyer/orders', { token: buyerTok });
+  const order = orders.json.orders.find(o => o.orderId === dealId);
+  assert.equal(order.amount, 20, 'the stored order must reflect what was actually charged, not the price at retry time');
+  assert.equal(order.buyerTotal, 20);
+});
+
 test('a disputed escrow can be released to the seller or refunded to the buyer by an admin', async (t) => {
   const srv = await startServer();
   t.after(() => srv.stop());
