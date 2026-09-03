@@ -1,0 +1,27 @@
+{
+  "name": "dot-marketplace",
+  "version": "1.0.0",
+  "description": "Dot Marketplace — escrow-protected digital goods demo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "db:check": "node scripts/check-mongo.js",
+    "seed:accounts": "node scripts/seed-accounts.js",
+    "seed:listings": "node scripts/seed-listings.js",
+    "seed:admin": "node scripts/seed-admin.js",
+    "seed": "npm run seed:accounts && npm run seed:listings && npm run seed:admin",
+    "db:up": "docker start dot-marketplace-mongo 2>/dev/null || docker run -d --name dot-marketplace-mongo -p 27017:27017 -v dot_marketplace_mongo:/data/db --restart unless-stopped mongo:7",
+    "db:down": "docker stop dot-marketplace-mongo",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongodb": "^7.6.0",
+    "nodemailer": "^9.0.6"
+  }
+}

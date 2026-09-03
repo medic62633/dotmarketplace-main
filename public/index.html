@@ -1,0 +1,1940 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dot Marketplace</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script src="/js/theme-boot.js"></script>
+<link rel="stylesheet" href="/css/fonts.css">
+<style>
+/* ---------- tokens (dark-first) ---------- */
+:root {
+  --bg: #0c0a13;
+  --bg-elev: #131020;
+  --surface: #151221;
+  --surface-2: #1b1729;
+  --surface-3: #241e35;
+  --line: #251f34;
+  --line-2: #342b49;
+  --ink: #e8eaf0;
+  --ink-2: #a6abb8;
+  --muted: #7a7f8c;
+  --accent: #6f7cff;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(111, 124, 255, .14);
+  --accent-line: rgba(111, 124, 255, .38);
+  --success: #3ecf8e;
+  --success-soft: rgba(62, 207, 142, .13);
+  --warning: #f5b544;
+  --warning-soft: rgba(245, 181, 68, .13);
+  --danger: #f4645c;
+  --danger-soft: rgba(244, 100, 92, .13);
+  --star: #f5b544;
+  --shadow: 0 16px 40px rgba(0, 0, 0, .42);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, .28);
+  --hdr: rgba(14, 11, 22, .72);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f7f7f8;
+    --bg-elev: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f0f1f4;
+    --surface-3: #e7e9ee;
+    --line: #e3e5ea;
+    --line-2: #d4d7df;
+    --ink: #16181d;
+    --ink-2: #4c515c;
+    --muted: #6b707c;
+    --accent: #4f5be0;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(79, 91, 224, .09);
+    --accent-line: rgba(79, 91, 224, .30);
+    --success: #1da872;
+    --success-soft: rgba(29, 168, 114, .11);
+    --warning: #c78a12;
+    --warning-soft: rgba(199, 138, 18, .11);
+    --danger: #d94338;
+    --danger-soft: rgba(217, 67, 56, .10);
+    --star: #d9930d;
+    --shadow: 0 18px 44px rgba(22, 24, 29, .14);
+    --shadow-sm: 0 4px 14px rgba(22, 24, 29, .08);
+    --hdr: rgba(247, 247, 248, .82);
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f7f7f8;
+  --bg-elev: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f0f1f4;
+  --surface-3: #e7e9ee;
+  --line: #e3e5ea;
+  --line-2: #d4d7df;
+  --ink: #16181d;
+  --ink-2: #4c515c;
+  --muted: #6b707c;
+  --accent: #4f5be0;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(79, 91, 224, .09);
+  --accent-line: rgba(79, 91, 224, .30);
+  --success: #1da872;
+  --success-soft: rgba(29, 168, 114, .11);
+  --warning: #c78a12;
+  --warning-soft: rgba(199, 138, 18, .11);
+  --danger: #d94338;
+  --danger-soft: rgba(217, 67, 56, .10);
+  --star: #d9930d;
+  --shadow: 0 18px 44px rgba(22, 24, 29, .14);
+  --shadow-sm: 0 4px 14px rgba(22, 24, 29, .08);
+  --hdr: rgba(247, 247, 248, .82);
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  transition: background .25s ease, color .25s ease;
+}
+.mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, select { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+::selection { background: var(--accent-soft); }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+html { scroll-behavior: smooth; }
+
+/* ambient background: aurora blobs + dot texture */
+body::before {
+  content: ""; position: fixed; inset: -15%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(48% 38% at 50% -8%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 72%),
+    radial-gradient(30% 26% at 12% 10%, color-mix(in srgb, #9a6fff 20%, transparent), transparent 70%),
+    radial-gradient(30% 26% at 90% 6%, color-mix(in srgb, #d946ef 15%, transparent), transparent 70%),
+    radial-gradient(42% 38% at 82% 92%, color-mix(in srgb, var(--success) 12%, transparent), transparent 70%),
+    radial-gradient(30% 26% at 4% 84%, color-mix(in srgb, #f27a4d 10%, transparent), transparent 70%);
+  transform: translate3d(var(--bx, 0px), var(--by, 0px), 0);
+  will-change: transform;
+}
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 11%, transparent) 1px, transparent 1.4px);
+  background-size: 24px 24px;
+  -webkit-mask-image: linear-gradient(#000 0%, transparent 72%);
+  mask-image: linear-gradient(#000 0%, transparent 72%);
+  transform: translate3d(calc(var(--bx, 0px) * -0.35), calc(var(--by, 0px) * -0.35), 0);
+}
+@keyframes bg-drift { to { transform: translate3d(2.5%, -2%, 0) scale(1.06); } }
+
+.app { max-width: none; margin: 0; padding: 0 0 120px; }
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: sticky; top: 12px; z-index: 60;
+  margin-top: 12px;
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  background: var(--hdr);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+}
+.topbar-in {
+  max-width: none; margin: 0; padding: 12px clamp(20px, 3.5vw, 48px);
+  display: flex; align-items: center; gap: 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  display: grid; place-items: center;
+  background: linear-gradient(140deg, var(--accent), #9a6fff 130%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), var(--shadow-sm);
+}
+.brand-name { font-weight: 800; font-size: 17px; letter-spacing: -.02em; }
+.brand-name em { font-style: normal; color: var(--accent); }
+.searchwrap {
+  flex: 1;
+  position: relative;
+}
+.searchbox { display: flex; align-items: center; }
+.search-ico { flex: none; display: flex; align-items: center; }
+.search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.search::placeholder { color: var(--muted); }
+.search:focus { outline: none; }
+.topbar-spacer { flex: 1; }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  margin-left: auto;
+}
+.wallet {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 8px 7px 14px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px;
+}
+.wallet .amt { font-size: 13.5px; font-weight: 700; }
+.wallet .cur { color: var(--muted); font-size: 11.5px; font-weight: 700; letter-spacing: .04em; }
+.wallet .topup {
+  width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), #9a6fff); color: var(--accent-ink); font-weight: 800; line-height: 1;
+  transition: transform .12s ease;
+}
+.wallet .topup:hover { transform: scale(1.12); }
+.iconbtn {
+  width: 38px; height: 38px; border-radius: 12px; flex: none;
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2);
+  transition: color .15s ease, border-color .15s ease;
+}
+.iconbtn:hover { color: var(--ink); border-color: var(--line-2); }
+.avatar {
+  width: 38px; height: 38px; border-radius: 999px; flex: none;
+  display: grid; place-items: center;
+  font-weight: 800; font-size: 13px; color: #fff;
+  border: 1px solid var(--line-2);
+}
+
+/* ---------- trust strip ---------- */
+.trust {
+  margin: 22px 0 0; padding: 13px 18px;
+  display: flex; align-items: flex-start; gap: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+}
+.trust-shield {
+  width: 36px; height: 36px; border-radius: 11px; flex: none;
+  display: grid; place-items: center;
+  background: var(--success-soft); color: var(--success);
+}
+.trust p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.trust p strong { color: var(--ink); font-weight: 700; }
+.trust .x { margin-left: auto; color: var(--muted); padding: 6px; border-radius: 8px; flex: none; }
+.trust .x:hover { color: var(--ink); background: var(--surface-2); }
+
+/* ---------- layout ---------- */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 336px; gap: 28px; margin-top: 24px; align-items: start; }
+@media (max-width: 1060px) { .layout { grid-template-columns: minmax(0, 1fr); } .rail { position: static; top: auto; } }
+
+/* ---------- market head ---------- */
+.mk-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.mk-head h1 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.mk-head .count { color: var(--muted); font-size: 13px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 16px 2px 4px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; display: flex; align-items: center; gap: 7px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--ink-2); font-weight: 600; font-size: 13.5px;
+  transition: all .15s ease; white-space: nowrap;
+}
+.chip:hover { border-color: var(--line-2); color: var(--ink); }
+.chip .n { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.chip.on {
+  background: linear-gradient(135deg, var(--accent), #9a6fff); border-color: transparent; color: var(--accent-ink);
+  box-shadow: 0 6px 18px -6px var(--accent);
+}
+.chip.on .n { color: var(--accent-ink); opacity: .75; }
+.chip .cdot { width: 7px; height: 7px; border-radius: 999px; flex: none; }
+.chip.on .cdot { background: var(--accent-ink) !important; opacity: .85; }
+
+/* ---------- filter row ---------- */
+.filters {
+  margin-top: 12px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+}
+.filters .lbl { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.select {
+  appearance: none; padding: 7px 30px 7px 12px;
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237a7f8c' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center;
+  border: 1px solid var(--line); border-radius: 10px; color: var(--ink);
+  font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.toggle { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle .tk {
+  width: 36px; height: 21px; border-radius: 999px; position: relative; flex: none;
+  background: var(--surface-3); border: 1px solid var(--line-2);
+  transition: background .18s ease, border-color .18s ease;
+}
+.toggle .tk::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 15px; height: 15px; border-radius: 999px; background: var(--muted);
+  transition: translate .18s ease, background .18s ease;
+}
+.toggle input:checked + .tk { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + .tk::after { translate: 15px 0; background: #fff; }
+.toggle input:focus-visible + .tk { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggle .tl { font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.filters .reset { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 8px; }
+.filters .reset:hover { color: var(--ink); background: var(--surface-2); }
+
+/* ---------- listing grid ---------- */
+.grid {
+  margin-top: 18px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(238px, 1fr)); gap: 16px;
+}
+.card {
+  position: relative;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+  overflow: hidden; cursor: pointer; text-align: left; padding: 0; display: block; width: 100%;
+  transition: transform .18s cubic-bezier(.2,.8,.3,1), border-color .16s ease, box-shadow .18s ease;
+  animation: card-in .5s cubic-bezier(.2,.8,.3,1) backwards;
+  transform: perspective(950px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(var(--ty, 0px));
+}
+.card::after {
+  content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: radial-gradient(340px circle at var(--gx, 50%) var(--gy, 50%), rgba(255,255,255,.10), transparent 55%);
+  opacity: 0; transition: opacity .2s ease;
+}
+.card:hover::after { opacity: 1; }
+@keyframes card-in { from { opacity: 0; transform: translateY(16px) scale(.97); } }
+.card:hover { --ty: -4px; border-color: var(--accent-line); box-shadow: var(--shadow-sm); }
+.thumb {
+  position: relative; aspect-ratio: 16 / 9.6;
+  display: grid; place-items: center; overflow: hidden;
+}
+.thumb::before, .sheet-media::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(90% 120% at 12% -10%, rgba(255,255,255,.26), transparent 50%),
+    radial-gradient(75% 105% at 106% 112%, rgba(0,0,0,.24), transparent 55%);
+  pointer-events: none;
+}
+.thumb::after, .sheet-media::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.20) 1px, transparent 1.4px);
+  background-size: 17px 17px;
+  -webkit-mask-image: linear-gradient(115deg, transparent 34%, #000 88%);
+  mask-image: linear-gradient(115deg, transparent 34%, #000 88%);
+  opacity: .55; pointer-events: none;
+}
+.thumb .rings, .sheet-media .rings {
+  position: absolute; right: -34px; bottom: -42px; opacity: .3; pointer-events: none;
+}
+.thumb .tile, .sheet-media .tile {
+  position: relative; z-index: 1;
+  width: 62px; height: 62px; border-radius: 19px;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.38);
+  box-shadow: 0 12px 28px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.35);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  transition: transform .25s cubic-bezier(.2,.9,.3,1.3);
+}
+.card:hover .tile { transform: rotate(-5deg) scale(1.07); }
+.thumb.has-img .tile { display: none; }
+.thumb-img {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; display: block;
+  object-fit: cover; object-position: center;
+}
+.sheet-media.has-img .tile { display: none; }
+.sheet-media.has-img { min-height: 280px; }
+/* Show the whole image (auto-fit) instead of zoom-cropping it — detail sheet. */
+.sheet-media .thumb-img { object-fit: contain; object-position: center; padding: 22px; background: var(--surface-2); }
+/* Marketplace grid cards: auto-fit the image too, with a small inset. */
+.thumb .thumb-img.card-img { object-fit: contain; object-position: center; padding: 10px; background: var(--surface-2); }
+/* Per-category gradient background for listings with no uploaded image (grid
+ * cards + detail sheet). Colors mirror CATGRAD in app.js — keep them in sync. */
+.thumb-cat-accounts      { background: linear-gradient(140deg, #5b6cff, #8e54e9 130%); }
+.thumb-cat-subscriptions { background: linear-gradient(140deg, #e0457a, #f27a4d 130%); }
+.thumb-cat-software      { background: linear-gradient(140deg, #0ea5a4, #3ecf8e 130%); }
+.thumb-cat-services      { background: linear-gradient(140deg, #f5b544, #f27a4d 130%); }
+.thumb-cat-digital       { background: linear-gradient(140deg, #7a5af8, #c94fd8 130%); }
+.thumb-cat-gaming        { background: linear-gradient(140deg, #3a86ff, #37d5ee 130%); }
+.thumb .cat-tag {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(10, 11, 15, .5); color: #eef;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+}
+.esc-chip {
+  position: absolute; bottom: 10px; right: 10px; z-index: 2;
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(10, 11, 15, .5); color: #bff3da;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-size: 11px; font-weight: 700;
+}
+.card-body { padding: 13px 15px 14px; }
+.card-title {
+  font-weight: 700; font-size: 14.5px; line-height: 1.35; letter-spacing: -.01em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 2.7em;
+}
+.card-price { margin-top: 9px; display: flex; align-items: center; gap: 6px; }
+.card-price .p { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.card-price .from, .sp-li-foot .from { font-size: 12px; color: var(--muted); font-weight: 500; }
+.card-price .c {
+  margin-left: auto; padding: 3px 8px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 10.5px; font-weight: 800; letter-spacing: .06em; color: var(--muted);
+}
+.card-seller {
+  margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 8px;
+}
+.s-ava {
+  width: 24px; height: 24px; border-radius: 999px; flex: none;
+  display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #fff;
+}
+.s-name { font-size: 12.5px; font-weight: 700; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-vfy { color: var(--accent); flex: none; display: inline-flex; }
+.s-meta { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+.s-meta .st { color: var(--star); }
+
+/* skeleton */
+.sk { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.sk .a { aspect-ratio: 16 / 9.6; }
+.sk .b { height: 14px; margin: 14px 15px 8px; border-radius: 6px; }
+.sk .c { height: 11px; margin: 0 15px 16px; width: 55%; border-radius: 6px; }
+.sk .a, .sk .b, .sk .c {
+  background: linear-gradient(100deg, var(--surface-2) 38%, var(--surface-3) 50%, var(--surface-2) 62%);
+  background-size: 220% 100%;
+  animation: shimmer 1.15s linear infinite;
+}
+@keyframes shimmer { to { background-position: -120% 0; } }
+
+.empty {
+  grid-column: 1 / -1; text-align: center; padding: 56px 20px;
+  border: 1px dashed var(--line-2); border-radius: 16px; color: var(--muted);
+}
+.empty b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+
+/* ---------- escrow desk rail ---------- */
+.rail { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 100px; }
+.panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 18px;
+  animation: card-in .5s cubic-bezier(.2,.8,.3,1) backwards;
+}
+.panel:nth-child(2) { animation-delay: 80ms; }
+.panel:nth-child(3) { animation-delay: 160ms; }
+.panel:nth-child(4) { animation-delay: 240ms; }
+.panel h2 { font-size: 13px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+.deal { border: 1px solid var(--line); border-radius: 13px; padding: 13px 14px; background: var(--surface-2); }
+.deal + .deal { margin-top: 10px; }
+.deal-top { display: flex; align-items: center; gap: 9px; }
+.deal-id { font-size: 11.5px; font-weight: 700; color: var(--muted); letter-spacing: .03em; }
+.pill {
+  margin-left: auto; padding: 3px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 800; letter-spacing: .02em;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.pill.escrow  { background: var(--accent-soft); color: var(--accent); }
+.pill.wait    { background: var(--warning-soft); color: var(--warning); }
+.pill.dispute { background: var(--danger-soft); color: var(--danger); }
+.pill.done    { background: var(--success-soft); color: var(--success); }
+.deal-title { margin-top: 7px; font-size: 14px; font-weight: 700; }
+.deal-amt { margin-top: 4px; font-size: 17px; font-weight: 800; color: var(--ink); letter-spacing: -.01em; }
+.deal-amt .cur { font-size: 12px; font-weight: 700; color: var(--muted); margin-left: 3px; }
+.deal-steps { margin-top: 12px; display: flex; align-items: center; gap: 5px; }
+.dstep { flex: 1; height: 4px; border-radius: 999px; background: var(--surface-3); }
+.dstep.full { background: var(--accent); }
+.dstep.now { background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.deal-note { margin-top: 9px; font-size: 12px; color: var(--muted); }
+.rail-all { display: block; margin-top: 12px; font-size: 13px; font-weight: 700; color: var(--accent); text-decoration: none; }
+.rail-all:hover { text-decoration: underline; }
+
+.how { display: flex; flex-direction: column; gap: 0; }
+.how-row { display: flex; gap: 13px; position: relative; padding-bottom: 16px; }
+.how-row:last-child { padding-bottom: 0; }
+.how-row::before {
+  content: ""; position: absolute; left: 13px; top: 30px; bottom: 2px; width: 2px;
+  background: var(--line); border-radius: 2px;
+}
+.how-row:last-child::before { display: none; }
+.how-n {
+  width: 28px; height: 28px; border-radius: 999px; flex: none;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12.5px; font-weight: 800;
+}
+.how-row b { display: block; font-size: 13.5px; }
+.how-row span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+.stat-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--line); border-radius: 12px; overflow: hidden; }
+.stat { background: var(--surface-2); padding: 12px 8px; text-align: center; }
+.stat .v { font-size: 15px; font-weight: 700; }
+.stat .k { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+
+.seller-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; }
+.seller-row + .seller-row { border-top: 1px solid var(--line); }
+.seller-row .s-ava { width: 34px; height: 34px; font-size: 12.5px; }
+.seller-row .nm { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+.seller-row .mt { font-size: 12px; color: var(--muted); }
+.seller-row .rt { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--ink-2); display: flex; align-items: center; gap: 4px; }
+.seller-row .rt .st { color: var(--star); }
+
+
+/* ---------- featured deal (animated gradient border) ---------- */
+@property --fa { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+.feat {
+  margin: 2px 0 18px; padding: 1.5px; border-radius: 18px;
+  background: conic-gradient(from var(--fa), var(--accent), #d946ef, #3ecf8e, var(--accent));
+  animation: feat-spin 5s linear infinite;
+}
+@keyframes feat-spin { to { --fa: 360deg; } }
+.feat-in {
+  border-radius: 16.5px; background: var(--bg-elev);
+  padding: 13px 16px; display: flex; align-items: center; gap: 13px; flex-wrap: wrap;
+}
+.feat-badge {
+  font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--warning); background: var(--warning-soft); padding: 5px 10px; border-radius: 999px; white-space: nowrap;
+}
+.feat-title { font-weight: 700; font-size: 14px; }
+.feat-action { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.feat-price { color: var(--muted); font-size: 12.5px; display: flex; gap: 8px; align-items: baseline; white-space: nowrap; }
+.feat-price b { color: var(--ink); font-size: 15px; }
+.feat-btn {
+  flex: none !important; width: auto; display: inline-flex; align-items: center; justify-content: center;
+  padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 700; letter-spacing: 0.02em;
+  line-height: 1; white-space: nowrap; cursor: pointer;
+}
+
+/* button sheen sweep */
+.btn-pri { position: relative; overflow: hidden; }
+.btn-pri::after {
+  content: ""; position: absolute; top: 0; left: -85%; width: 45%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.32), transparent);
+  transform: skewX(-20deg); transition: left .55s ease; pointer-events: none;
+}
+.btn-pri:hover::after { left: 135%; }
+
+/* inset depth highlight on surfaces */
+.panel, .card, .filters, .trust, .composer, .deal {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+}
+
+/* styled scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--line-2); }
+html { scrollbar-color: var(--surface-3) transparent; }
+
+/* ---------- market hero ---------- */
+.mhero { text-align: center; padding: 34px 20px 6px; }
+.mhero-t {
+  font-size: clamp(26px, 4vw, 38px); font-weight: 800; letter-spacing: -.03em; line-height: 1.15;
+}
+.mhero-t em {
+  font-style: normal;
+  background: linear-gradient(100deg, var(--accent) 10%, #c084fc 55%, #e879f9 90%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.mhero-s { margin: 10px auto 0; max-width: 56ch; color: var(--muted); font-size: 14.5px; }
+
+/* ---------- card tag chips (1v9-style service tags) ---------- */
+.card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 11px; }
+.ctag {
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 10.5px; font-weight: 700; color: var(--muted); white-space: nowrap;
+}
+.ctag.active {
+  background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent);
+}
+
+/* ---------- views & page nav ---------- */
+.view { display: none; }
+.view.on { display: block; animation: view-in .3s ease; }
+@keyframes view-in { from { opacity: 0; transform: translateY(8px); } }
+.pagenav { display: flex; gap: 6px; margin-top: 16px; overflow-x: auto; scrollbar-width: none; }
+.pagenav::-webkit-scrollbar { display: none; }
+.ptab {
+  flex: none; padding: 9px 17px; border-radius: 12px;
+  font-weight: 700; font-size: 14px; color: var(--muted);
+  border: 1px solid transparent; white-space: nowrap;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.ptab:hover { color: var(--ink); background: var(--surface-2); }
+.ptab.on { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+
+/* ---------- forum ---------- */
+.composer {
+  margin-top: 18px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+}
+.composer .avatar { width: 36px; height: 36px; }
+.composer-in {
+  flex: 1; min-width: 0; padding: 9px 0; background: none; border: 0; color: var(--ink);
+}
+.composer-in:focus { outline: none; }
+.composer-in::placeholder { color: var(--muted); }
+.composer .composer-btn { flex: none; padding: 9px 22px; border-radius: 11px; font-size: 13.5px; }
+.threads { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.thread { padding: 16px 18px; }
+.thread-top { display: flex; align-items: center; gap: 10px; }
+.thread-top .s-ava { width: 32px; height: 32px; font-size: 11.5px; }
+.thread-who { min-width: 0; }
+.thread-who .nm { font-size: 13.5px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+.thread-who .mt { font-size: 11.5px; color: var(--muted); }
+.role-chip {
+  padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 800;
+  letter-spacing: .05em; text-transform: uppercase;
+  background: var(--accent-soft); color: var(--accent);
+}
+.role-chip.team { background: var(--warning-soft); color: var(--warning); }
+.thread-tag { margin-left: auto; flex: none; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 11px; font-weight: 700; color: var(--muted); }
+.thread-tag.pin { background: var(--warning-soft); border-color: transparent; color: var(--warning); }
+.thread h3 { margin-top: 11px; font-size: 15.5px; font-weight: 800; letter-spacing: -.01em; }
+.thread p { margin: 5px 0 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+.thread-foot { margin-top: 13px; display: flex; align-items: center; gap: 10px; }
+.vote {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 12.5px; font-weight: 800; color: var(--ink-2);
+  transition: all .15s ease;
+}
+.vote:hover { border-color: var(--accent-line); color: var(--accent); }
+.vote.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.thread-stat { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+
+/* ---------- community ---------- */
+.comm-stats { margin-top: 18px; grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 560px) { .comm-stats { grid-template-columns: 1fr 1fr; } }
+.comm-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+@media (max-width: 900px) { .comm-grid { grid-template-columns: 1fr; } }
+.comm-side { display: flex; flex-direction: column; gap: 16px; }
+.leader-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+.leader-row + .leader-row { border-top: 1px solid var(--line); }
+.rank {
+  width: 26px; height: 26px; border-radius: 9px; flex: none;
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 12px; font-weight: 800; color: var(--muted);
+}
+.leader-row:nth-child(1) .rank { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+.leader-row:nth-child(2) .rank,
+.leader-row:nth-child(3) .rank { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.leader-row .s-ava { width: 36px; height: 36px; font-size: 12.5px; }
+.leader-row .nm { font-size: 13.5px; font-weight: 800; display: flex; align-items: center; gap: 5px; }
+.leader-row .mt { font-size: 12px; color: var(--muted); }
+.leader-row .rt { margin-left: auto; font-size: 12.5px; font-weight: 800; color: var(--ink-2); display: flex; align-items: center; gap: 4px; }
+.leader-row .rt .st { color: var(--star); }
+
+/* ---------- seller profile (buyer-facing) ---------- */
+.seller-link { cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: color .15s, text-decoration-color .15s; }
+.seller-link:hover { color: var(--accent); text-decoration-color: var(--accent-line); }
+.sp-back { margin-bottom: 16px; }
+.sp-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }
+.sp-card { padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.sp-hero { text-align: center; padding-top: 8px; }
+.sp-ava { width: 72px; height: 72px; border-radius: 999px; display: grid; place-items: center; font-weight: 800; font-size: 22px; margin: 0 auto 12px; }
+.sp-name { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.sp-verified { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--accent); font-weight: 700; }
+.sp-stats { margin-top: 18px; display: grid; gap: 10px; }
+.sp-stat { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.sp-stat:last-child { border-bottom: 0; }
+.sp-stat .k { color: var(--muted); }
+.sp-stat .v { font-weight: 700; text-align: right; }
+.sp-main .sp-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.sp-card-li {
+  position: relative; text-align: left; padding: 0; border-radius: 16px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); cursor: pointer; color: inherit; font: inherit;
+  display: flex; flex-direction: column; transition: transform .18s cubic-bezier(.2,.8,.3,1), border-color .16s ease, box-shadow .18s ease;
+}
+.sp-card-li:hover { transform: translateY(-4px); border-color: var(--accent-line); box-shadow: var(--shadow-sm); }
+.sp-thumb { position: relative; aspect-ratio: 16 / 10; display: block; overflow: hidden; }
+.sp-thumb .sp-grad { position: absolute; inset: 0; }
+.sp-thumb .sp-grad::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(90% 120% at 12% -10%, rgba(255,255,255,.26), transparent 50%),
+    radial-gradient(75% 105% at 106% 112%, rgba(0,0,0,.24), transparent 55%);
+}
+.sp-thumb .sp-grad::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.20) 1px, transparent 1.4px);
+  background-size: 17px 17px;
+  -webkit-mask-image: linear-gradient(115deg, transparent 34%, #000 88%);
+  mask-image: linear-gradient(115deg, transparent 34%, #000 88%);
+  opacity: .55;
+}
+.sp-thumb .tile {
+  position: absolute; inset: 0; margin: auto; z-index: 1;
+  width: 60px; height: 60px; border-radius: 18px;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.38);
+  box-shadow: 0 12px 28px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.35);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  transition: transform .25s cubic-bezier(.2,.9,.3,1.3);
+}
+.sp-card-li:hover .sp-thumb .tile { transform: rotate(-5deg) scale(1.07); }
+.sp-thumb img { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; padding: 10px; background: var(--surface-2); }
+.sp-thumb .cat-tag {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(10, 11, 15, .5); color: #eef;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+}
+.sp-thumb .esc-chip {
+  position: absolute; bottom: 10px; right: 10px; z-index: 2;
+  display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px;
+  background: rgba(10, 11, 15, .5); color: #bff3da;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font-size: 11px; font-weight: 700;
+}
+.sp-li-body { padding: 13px 14px 14px; display: block; flex: 1; }
+.sp-li-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.7em; font-weight: 700; font-size: 14.5px; line-height: 1.35; letter-spacing: -.01em; }
+.sp-li-foot { margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+.sp-li-foot .p { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.sp-li-foot .c { margin-left: auto; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 10.5px; font-weight: 800; letter-spacing: .06em; color: var(--muted); }
+.sp-li-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 11px; }
+.sp-review { padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.sp-review-top { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.sp-review .stars { color: var(--star); font-weight: 700; letter-spacing: .04em; }
+.sp-review .deal { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.sp-review p { font-size: 13px; line-height: 1.5; margin: 0; color: var(--ink-2); }
+
+/* Review prompt modal */
+.rv-box { max-width: 440px; }
+.rv-head { text-align: center; margin-bottom: 6px; }
+.rv-ava { width: 54px; height: 54px; border-radius: 999px; display: grid; place-items: center; font-weight: 800; font-size: 18px; margin: 0 auto 10px; }
+.rv-box h2 { margin: 0 0 6px; font-size: 19px; text-align: center; letter-spacing: -.01em; }
+.rv-sub { margin: 0 0 4px; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.5; }
+.rv-deal { display: inline-block; margin: 8px auto 0; padding: 4px 11px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 11.5px; font-weight: 700; color: var(--ink-2); }
+.rv-stars { display: flex; justify-content: center; gap: 6px; margin: 20px 0 6px; }
+.rv-star { background: none; border: 0; padding: 4px; cursor: pointer; color: var(--line-2); transition: transform .12s cubic-bezier(.2,.9,.3,1.4), color .15s ease; line-height: 0; }
+.rv-star svg { width: 38px; height: 38px; display: block; }
+.rv-star:hover { transform: scale(1.14); }
+.rv-star.on { color: var(--star); }
+.rv-star.on svg { filter: drop-shadow(0 3px 8px color-mix(in srgb, var(--star) 45%, transparent)); }
+.rv-label { text-align: center; font-size: 13px; font-weight: 700; color: var(--ink-2); min-height: 18px; margin-bottom: 14px; }
+.rv-text { width: 100%; resize: vertical; }
+.rv-count { text-align: right; font-size: 11px; color: var(--muted); margin-top: 4px; }
+.rv-actions { display: flex; gap: 8px; margin-top: 16px; }
+.rv-actions .btn { flex: 1; }
+.btn-danger { background: var(--danger) !important; border-color: transparent !important; color: #fff !important; }
+.btn-danger:hover { filter: brightness(1.08); }
+.dsp-box { max-width: 460px; }
+.dsp-box h2 { margin: 0 0 6px; font-size: 19px; letter-spacing: -.01em; }
+.dsp-sub { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.dsp-sub b { color: var(--ink-2); }
+.cred-box {
+  margin: 0 0 16px; padding: 14px 16px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  font-size: 14px; line-height: 1.6; word-break: break-all; white-space: pre-wrap;
+  user-select: text;
+}
+@media (max-width: 860px) { .sp-layout { grid-template-columns: 1fr; } }
+
+.newbies { display: flex; flex-wrap: wrap; gap: 9px; }
+.newbie {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 6px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 12.5px; font-weight: 700; color: var(--ink-2);
+}
+.newbie .s-ava { width: 24px; height: 24px; font-size: 9.5px; }
+.rules { display: flex; flex-direction: column; gap: 12px; }
+.rule b { display: block; font-size: 13.5px; }
+.rule span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+
+/* ---------- escrow page ---------- */
+.esc-hero { margin-top: 18px; display: flex; align-items: center; gap: 20px; padding: 24px; }
+.esc-hero-txt h2 { font-size: 19px; font-weight: 800; letter-spacing: -.02em; text-transform: none; color: var(--ink); margin-bottom: 8px; }
+.esc-hero-txt p { margin: 0; font-size: 14px; color: var(--ink-2); line-height: 1.65; max-width: 60ch; }
+.esc-hero-shield {
+  margin-left: auto; flex: none; width: 92px; height: 92px; border-radius: 26px;
+  display: grid; place-items: center;
+  background: var(--success-soft); color: var(--success);
+}
+@media (max-width: 560px) { .esc-hero-shield { display: none; } }
+.esc-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 16px; }
+.esc-step { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.esc-step b { font-size: 14.5px; }
+.esc-step span:last-child { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.esc-fee { margin-top: 0; }
+.faq { border: 1px solid var(--line); border-radius: 12px; padding: 12px 15px; background: var(--surface-2); }
+.faq + .faq { margin-top: 9px; }
+.faq summary { cursor: pointer; font-size: 13.5px; font-weight: 700; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.faq summary::after { content: "+"; font-size: 16px; color: var(--muted); transition: transform .2s ease; }
+.faq[open] summary::after { transform: rotate(45deg); }
+.faq p { margin: 9px 0 0; font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+
+/* ---------- deals page ---------- */
+.deal-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 16px; align-items: stretch; }
+.deal-list .deal { background: var(--surface); display: flex; flex-direction: column; margin-top: 0; }
+.deal-with { margin-top: 3px; font-size: 12px; color: var(--muted); }
+.deal-with b { color: var(--ink-2); font-weight: 700; }
+/* Anchor the action row to the bottom so cards align; buttons wrap cleanly
+   and primary actions stretch full-width. */
+.deal-act { margin-top: auto; padding-top: 13px; display: flex; flex-wrap: wrap; gap: 8px; }
+.deal-act .btn { padding: 9px 13px; border-radius: 10px; font-size: 12.5px; flex: 0 0 auto; }
+.deal-act .btn-pri, .deal-act .btn.done { flex: 1 1 100%; text-align: center; justify-content: center; }
+.deal-note { min-height: 16px; }
+.pill.cancel { background: var(--surface-3); color: var(--muted); }
+
+/* ---------- wallet ---------- */
+.walt { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; margin-top: 18px; align-items: start; }
+@media (max-width: 900px) { .walt { grid-template-columns: 1fr; } }
+.walt-card {
+  position: relative; overflow: hidden;
+  padding: 26px 24px 24px; border-radius: 20px;
+  background: linear-gradient(150deg, var(--accent), #9a6fff 120%);
+  color: #fff; box-shadow: 0 18px 40px -12px var(--accent);
+}
+.walt-card::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.35) 1px, transparent 1.4px);
+  background-size: 16px 16px;
+  -webkit-mask-image: linear-gradient(115deg, transparent 30%, #000 90%);
+  mask-image: linear-gradient(115deg, transparent 30%, #000 90%);
+  opacity: .5;
+  animation: walt-dots 9s linear infinite;
+}
+@keyframes walt-dots { to { background-position: 32px 16px; } }
+.walt-lbl { position: relative; font-size: 12px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; opacity: .85; }
+.walt-amt { position: relative; margin-top: 8px; font-size: 34px; font-weight: 700; letter-spacing: -.02em; display: flex; align-items: baseline; gap: 9px; }
+.walt-cur { font-size: 13px; font-weight: 800; opacity: .8; letter-spacing: .05em; }
+.walt-sub { position: relative; margin-top: 4px; font-size: 12.5px; opacity: .85; }
+.walt-btns { position: relative; margin-top: 20px; display: flex; gap: 10px; }
+.walt-btns .btn { padding: 11px 20px; border-radius: 12px; font-size: 13.5px; }
+.walt-btns .btn-pri { background: #fff; color: var(--accent); box-shadow: 0 8px 20px -6px rgba(0,0,0,.3); }
+.walt-btns .btn-ghost { border: 1px solid rgba(255,255,255,.5); color: #fff; }
+.walt-btns .btn-ghost:hover { background: rgba(255,255,255,.12); }
+.txs { display: flex; flex-direction: column; }
+.tx { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+.tx + .tx { border-top: 1px solid var(--line); }
+.tx-ico {
+  width: 34px; height: 34px; border-radius: 12px; flex: none;
+  display: grid; place-items: center;
+}
+.tx-ico.in { background: var(--success-soft); color: var(--success); }
+.tx-ico.out, .tx-ico.hold { background: var(--accent-soft); color: var(--accent); }
+.tx-ico.fee { background: var(--warning-soft); color: var(--warning); }
+.tx .lbl { font-size: 13.5px; font-weight: 700; }
+.tx .t { font-size: 11.5px; color: var(--muted); }
+.tx .amt { margin-left: auto; font-size: 13.5px; font-weight: 700; }
+.tx .amt.pos { color: var(--success); }
+
+/* ---------- chat ---------- */
+.navdot {
+  min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 10.5px; font-weight: 800; display: inline-grid; place-items: center;
+  vertical-align: 1px;
+}
+.chatwrap {
+  display: grid; grid-template-columns: 320px minmax(0, 1fr);
+  margin-top: 18px; border: 1px solid var(--line); border-radius: 18px;
+  background: var(--surface); overflow: hidden;
+  height: min(640px, calc(100vh - 230px)); min-height: 460px;
+}
+.chatlist { border-right: 1px solid var(--line); overflow-y: auto; padding: 8px; }
+.chatitem {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 10px 11px; border-radius: 13px; text-align: left;
+  transition: background .14s ease;
+}
+.chatitem:hover { background: var(--surface-2); }
+.chatitem.on { background: var(--accent-soft); }
+.chatitem .s-ava { width: 40px; height: 40px; font-size: 13px; flex: none; }
+.ci-body { flex: 1; min-width: 0; }
+.ci-top { display: flex; align-items: baseline; gap: 8px; }
+.ci-top b { font-size: 13.5px; }
+.ci-t { margin-left: auto; font-size: 10.5px; color: var(--muted); flex: none; }
+.ci-deal {
+  display: inline-block; margin-top: 2px; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 10px; font-weight: 700; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.chatitem.on .ci-deal { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.ci-prev {
+  display: block; font-size: 12px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
+}
+.ci-un {
+  flex: none; min-width: 19px; height: 19px; padding: 0 6px; border-radius: 999px;
+  background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 800;
+  display: grid; place-items: center;
+}
+/* grouped conversations (one row per counterparty, deal threads nested) */
+.cigroup { margin-bottom: 2px; }
+.cigroup-head { width: 100%; }
+.ci-chev { flex: none; color: var(--muted); display: inline-flex; transition: transform .15s ease; }
+.ci-chev.open { transform: rotate(180deg); }
+.ci-thread {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 11px 8px 34px; border-radius: 11px; text-align: left;
+  transition: background .14s ease;
+}
+.ci-thread:hover { background: var(--surface-2); }
+.ci-thread.on { background: var(--accent-soft); }
+.ci-thread-lbl {
+  flex: none; max-width: 60%; padding: 1px 8px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 10.5px; font-weight: 700; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ci-thread.on .ci-thread-lbl { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+.ci-thread-prev {
+  flex: 1; min-width: 0; font-size: 11.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chatpane { display: flex; flex-direction: column; min-width: 0; }
+.chat-empty {
+  flex: 1; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 30px;
+}
+.chat-empty b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 4px; }
+.chat-head {
+  display: flex; align-items: center; gap: 11px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line);
+}
+.chat-back { display: none; margin-right: 2px; color: var(--muted); padding: 6px; border-radius: 8px; }
+.chat-back:hover { background: var(--surface-2); color: var(--ink); }
+.chat-head .s-ava { width: 38px; height: 38px; font-size: 12.5px; }
+.chat-head .nm { font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 7px; }
+.chat-head .mt { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.ondot { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); display: inline-block; }
+.ondot.on { background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); }
+.chat-deal {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 16px; border-bottom: 1px solid var(--line);
+  background: var(--surface-2); font-size: 12.5px;
+}
+.chat-deal .t { font-weight: 700; }
+.chat-deal .a { margin-left: auto; font-weight: 700; color: var(--ink-2); }
+.chat-msgs {
+  flex: 1; overflow-y: auto; padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.m-sys {
+  align-self: center; max-width: 85%;
+  padding: 5px 12px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 11px; font-weight: 700; color: var(--muted); text-align: center;
+}
+.m-row { display: flex; }
+.m-row.me { justify-content: flex-end; }
+.m-bub {
+  max-width: min(70%, 460px); padding: 9px 13px 6px;
+  border-radius: 15px; font-size: 13.5px; line-height: 1.5;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-bottom-left-radius: 5px; position: relative;
+  animation: msg-in .2s ease;
+}
+@keyframes msg-in { from { opacity: 0; transform: translateY(5px); } }
+.m-row.me .m-bub {
+  background: linear-gradient(135deg, var(--accent), #9a6fff); border-color: transparent; color: #fff;
+  border-bottom-left-radius: 15px; border-bottom-right-radius: 5px;
+}
+.m-t { display: block; text-align: right; font-size: 9.5px; opacity: .65; margin-top: 2px; }
+.m-img {
+  display: block; max-width: min(240px, 100%); max-height: 220px;
+  border-radius: 10px; margin-bottom: 4px; object-fit: cover; cursor: pointer;
+}
+.m-bub:has(.m-img) { padding: 6px; }
+.m-bub:has(.m-img) .m-t { padding: 0 6px 2px; }
+.m-bub.typing { display: flex; gap: 4px; padding: 13px 15px; }
+.m-bub.typing span {
+  width: 6px; height: 6px; border-radius: 999px; background: var(--muted);
+  animation: tdot 1.1s ease-in-out infinite;
+}
+.m-bub.typing span:nth-child(2) { animation-delay: .15s; }
+.m-bub.typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes tdot { 30% { transform: translateY(-4px); opacity: 1; } 60% { opacity: .5; } }
+.chat-composer {
+  display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  border-top: 1px solid var(--line);
+}
+.chat-attach {
+  flex: none; width: 40px; height: 40px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+  display: grid; place-items: center;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.chat-attach:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-line); background: var(--brand-soft); }
+.chat-attach:disabled { opacity: .45; cursor: not-allowed; }
+.chat-attach:active:not(:disabled) { transform: scale(.94); }
+.chat-in {
+  flex: 1; min-width: 0; padding: 11px 15px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px;
+  color: var(--ink);
+}
+.chat-in:focus { outline: none; border-color: var(--accent-line); }
+.chat-in::placeholder { color: var(--muted); }
+.chat-send {
+  flex: none; width: 42px; height: 42px; border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #9a6fff); color: #fff;
+  display: grid; place-items: center; box-shadow: 0 6px 16px -6px var(--accent);
+  transition: transform .12s ease, filter .15s ease;
+}
+.chat-send:hover { filter: brightness(1.1); }
+.chat-send:active { transform: scale(.92); }
+@media (max-width: 860px) {
+  .chatwrap { grid-template-columns: 1fr; height: calc(100vh - 260px); }
+  .chatwrap .chatpane { display: none; }
+  .chatwrap.in-chat .chatlist { display: none; }
+  .chatwrap.in-chat .chatpane { display: flex; }
+  .chat-back { display: block; }
+}
+
+/* ---------- auth ---------- */
+.auth-btns { display: flex; gap: 8px; align-items: center; }
+.auth-btns .btn-in {
+  padding: 9px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 800;
+  color: var(--ink-2); border: 1px solid var(--line-2);
+  transition: all .15s ease;
+}
+.auth-btns .btn-in:hover { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.auth-btns .btn-up {
+  padding: 9px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 800;
+  background: linear-gradient(135deg, var(--accent), #9a6fff); color: #fff;
+  box-shadow: 0 8px 20px -6px var(--accent); position: relative; overflow: hidden;
+  transition: filter .15s ease, transform .12s ease;
+}
+.auth-btns .btn-up:hover { filter: brightness(1.1); }
+.auth-btns .btn-up:active { transform: scale(.97); }
+@media (max-width: 640px) {
+  .auth-btns .btn-in { display: none; }
+  .auth-btns .btn-up { padding: 8px 13px; font-size: 12.5px; }
+}
+
+.overlay.auth-overlay { z-index: 110; }
+.overlay.pay-overlay { z-index: 120; }
+.pay-card {
+  position: relative; width: min(480px, 100%);
+  background: var(--bg-elev); border: 1px solid var(--line-2); border-radius: 20px;
+  box-shadow: var(--shadow); overflow: hidden;
+  transform: translateY(14px) scale(.98); transition: transform .22s cubic-bezier(.2,.9,.25,1.1);
+  max-height: 92vh; overflow-y: auto;
+}
+.overlay.open .pay-card { transform: none; }
+.pay-head { padding: 22px 22px 0; }
+.pay-head h3 { font-size: 20px; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+.pay-head p { margin: 6px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.pay-summary {
+  margin: 16px 22px 0; padding: 14px 16px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.pay-summary .t { font-size: 13.5px; font-weight: 700; line-height: 1.45; }
+.pay-summary .row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; }
+.pay-summary .row.total { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-weight: 800; font-size: 15px; }
+.pay-methods { padding: 16px 22px 0; }
+.pay-methods h4 { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.pay-method {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 14px; margin-bottom: 8px; border-radius: 14px;
+  background: var(--surface); border: 1.5px solid var(--line);
+  transition: border-color .15s ease, background .15s ease;
+}
+.pay-method:hover { border-color: var(--accent-line); }
+.pay-method.on { border-color: var(--accent); background: var(--accent-soft); }
+.pay-method:disabled { opacity: .5; cursor: not-allowed; }
+.pay-method .ico {
+  width: 40px; height: 40px; border-radius: 12px; flex: none;
+  display: grid; place-items: center; background: var(--surface-2); color: var(--accent);
+}
+.pay-method.on .ico { background: var(--bg-elev); }
+.pay-method .body { flex: 1; min-width: 0; }
+.pay-method .body b { display: block; font-size: 14px; font-weight: 800; }
+.pay-method .body span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pay-method .badge {
+  flex: none; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted);
+}
+.pay-method.on .badge { background: var(--bg-elev); color: var(--accent); }
+.pay-method .radio {
+  width: 18px; height: 18px; border-radius: 999px; flex: none;
+  border: 2px solid var(--line-2); position: relative;
+}
+.pay-method.on .radio { border-color: var(--accent); }
+.pay-method.on .radio::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 999px; background: var(--accent);
+}
+/* Sticky within .pay-card's own scroll (not the page) so the primary action
+ * (Pay / Continue / Close) stays reachable without hunting through the fee
+ * breakdown or payment-method list above it on a short viewport. */
+.pay-foot {
+  padding: 16px 22px calc(22px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px;
+  position: sticky; bottom: 0; background: var(--bg-elev); border-top: 1px solid var(--line); margin-top: 4px;
+}
+.pay-notice {
+  margin: 0 22px 12px; padding: 10px 12px; border-radius: 12px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  font-size: 12px; color: var(--muted); line-height: 1.45;
+}
+.pay-error {
+  margin: 0; padding: 10px 12px; border-radius: 12px;
+  background: rgba(239, 68, 68, .08); border: 1px solid rgba(239, 68, 68, .25);
+  font-size: 12px; color: var(--warning); line-height: 1.45;
+}
+.pay-bal { font-size: 12px; color: var(--muted); text-align: center; }
+.pay-bal.low { color: var(--warning); }
+.pay-confirm { width: 100%; padding: 14px; border-radius: 14px; font-size: 15px; font-weight: 800; }
+.pay-confirm:disabled { opacity: .6; cursor: not-allowed; }
+.receipt-stamp {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  padding: 6px 10px; border-radius: 999px;
+  background: rgba(34, 197, 94, .12); border: 1px solid rgba(34, 197, 94, .25);
+  color: var(--success); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+}
+.receipt-actions { display: flex; gap: 10px; }
+.receipt-actions .btn { flex: 1; }
+.pay-x {
+  position: absolute; top: 14px; right: 14px; z-index: 3;
+  width: 32px; height: 32px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); display: grid; place-items: center;
+}
+.pay-x:hover { color: var(--ink); background: var(--surface-3); }
+@media (max-width: 520px) {
+  .pay-card { border-radius: 18px 18px 0 0; align-self: flex-end; max-height: 94vh; }
+  .overlay.pay-overlay { align-items: flex-end; padding: 0; }
+}
+
+/* ---------- seller panel ---------- */
+.seller-root { margin-top: 16px; }
+.seller-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 760px) { .seller-stats { grid-template-columns: 1fr 1fr; } }
+.seller-stat {
+  padding: 14px 16px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.seller-stat .k { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.seller-stat .v { display: block; margin-top: 6px; font-size: 18px; font-weight: 800; }
+.seller-banner {
+  padding: 12px 16px; margin-bottom: 14px; border-radius: 12px;
+  background: var(--warning-soft); border: 1px solid transparent; color: var(--warning);
+  font-size: 13px; font-weight: 600;
+}
+.seller-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.seller-hint { font-size: 13px; color: var(--muted); margin: 0; }
+.seller-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.seller-listings { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.seller-listing {
+  padding: 14px 16px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.seller-listing b { display: block; margin: 8px 0 4px; font-size: 14px; line-height: 1.4; }
+.seller-listing .sl-top { display: flex; justify-content: space-between; align-items: center; }
+.seller-listing .sl-act { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.seller-form { margin-top: 16px; }
+.admin-table-wrap { overflow-x: auto; margin-top: 12px; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.admin-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+.admin-act { white-space: nowrap; display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.badge.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.badge.warn { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.pay-crypto-pending { text-align: center; padding: 8px 0 4px; }
+.pay-crypto-pending .pay-addr { font-size: 12px; color: var(--muted); margin: 10px 0; word-break: break-all; }
+.pay-crypto-pending .pay-link { display: inline-block; margin: 12px 0; }
+.sf { display: block; margin-bottom: 12px; }
+.sf > span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.sf input, .sf select, .sf textarea {
+  width: 100%; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--ink);
+}
+.sf-row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; }
+.tx .amt.pos { color: var(--success); }
+.tx .amt.neg { color: var(--danger); }
+
+.auth-card {
+  position: relative; width: min(780px, 100%);
+  background: var(--bg-elev); border: 1px solid var(--line-2); border-radius: 22px;
+  box-shadow: var(--shadow); overflow: hidden;
+  transform: translateY(14px) scale(.98); transition: transform .22s cubic-bezier(.2,.9,.25,1.1);
+  max-height: 92vh; overflow-y: auto;
+}
+.overlay.open .auth-card { transform: none; }
+.auth-card.shake { animation: shake .4s ease; }
+@keyframes shake { 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+.auth-x {
+  position: absolute; top: 14px; right: 14px; z-index: 3;
+  width: 32px; height: 32px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); display: grid; place-items: center;
+  transition: color .15s ease, background .15s ease;
+}
+.auth-x:hover { color: var(--ink); background: var(--surface-3); }
+.auth-grid { display: grid; grid-template-columns: 320px 1fr; min-height: 560px; }
+
+/* visual side */
+.auth-visual {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 26px 26px 28px; color: #fff;
+  background: linear-gradient(165deg, #5f6dff 0%, #8a5cf6 52%, #c94fd8 115%);
+}
+.auth-visual::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.28) 1px, transparent 1.4px);
+  background-size: 18px 18px;
+  -webkit-mask-image: linear-gradient(160deg, #000 10%, transparent 70%);
+  mask-image: linear-gradient(160deg, #000 10%, transparent 70%);
+}
+.auth-visual::after {
+  content: ""; position: absolute; inset: 0;
+  background:
+    radial-gradient(70% 45% at 85% -5%, rgba(255,255,255,.25), transparent 60%),
+    radial-gradient(60% 40% at -10% 105%, rgba(20,10,60,.35), transparent 60%);
+}
+.av-top { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; }
+.av-top .brand-mark { width: 32px; height: 32px; border-radius: 10px; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35); box-shadow: none; }
+.av-word { font-weight: 800; font-size: 14.5px; letter-spacing: -.01em; }
+.av-bottom { position: relative; z-index: 1; }
+.av-bottom h4 { font-size: 30px; font-weight: 800; letter-spacing: -.03em; line-height: 1.12; margin: 0 0 10px; }
+.av-bottom p { margin: 0 0 22px; font-size: 13px; line-height: 1.6; opacity: .88; max-width: 30ch; }
+.av-stats { display: flex; flex-direction: column; gap: 1px; border-radius: 14px; overflow: hidden; }
+.av-stats > div {
+  display: flex; align-items: baseline; gap: 10px;
+  background: rgba(255,255,255,.13); backdrop-filter: blur(4px);
+  padding: 10px 14px;
+}
+.av-stats b { font-size: 16px; }
+.av-stats span { font-size: 11.5px; opacity: .85; font-weight: 600; }
+
+/* form side */
+.auth-formside { padding: 34px 34px 26px; }
+.auth-formside h3 { font-size: 21px; font-weight: 800; letter-spacing: -.02em; }
+.auth-sub { color: var(--muted); font-size: 13px; margin: 6px 0 20px; }
+.auth-tabs {
+  position: relative; display: grid; grid-template-columns: 1fr 1fr;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 4px;
+  margin-bottom: 20px;
+}
+.auth-tabs button {
+  position: relative; z-index: 1; padding: 8px; border-radius: 9px;
+  font-size: 13.5px; font-weight: 800; color: var(--muted);
+  transition: color .2s ease;
+}
+.auth-tabs button.on { color: var(--ink); }
+.atab-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px);
+  background: var(--bg-elev); border-radius: 9px; box-shadow: var(--shadow-sm);
+  transition: transform .25s cubic-bezier(.3,.9,.3,1.1);
+}
+.auth-tabs.m-in .atab-thumb { transform: translateX(0); }
+.auth-tabs:not(.m-in) .atab-thumb { transform: translateX(100%); }
+.af { display: block; margin-bottom: 14px; }
+.af > span:first-child { display: block; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+.af input {
+  width: 100%; padding: 11px 14px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.af input:focus {
+  outline: none; border-color: var(--accent-line); background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.af input::placeholder { color: var(--muted); }
+.af.err input { border-color: var(--danger); }
+.af.err input:focus { box-shadow: 0 0 0 3px var(--danger-soft); }
+.aerr { display: block; font-style: normal; font-size: 11.5px; color: var(--danger); margin-top: 5px; min-height: 14px; }
+.apw { position: relative; display: block; }
+.apw input { padding-right: 44px; }
+.apw button {
+  position: absolute; right: 6px; top: 50%; translate: 0 -50%;
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+  color: var(--muted); transition: color .15s ease, background .15s ease;
+}
+.apw button:hover { color: var(--ink); background: var(--surface-3); }
+.pwmeter { display: flex; gap: 5px; align-items: center; margin-top: 8px; }
+.pwmeter i { height: 4px; flex: 1; border-radius: 999px; background: var(--surface-3); transition: background .25s ease; }
+.pwmeter b { font-size: 11px; font-weight: 700; color: var(--muted); margin-left: 5px; min-width: 44px; }
+.auth-go {
+  width: 100%; margin-top: 6px; padding: 13px;
+  border-radius: 13px; font-size: 14.5px; font-weight: 800;
+  background: var(--accent); color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 20px -8px var(--accent);
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  transition: filter .15s ease, transform .12s ease;
+}
+.auth-go:hover { filter: brightness(1.09); }
+.auth-go:active { transform: scale(.99); }
+.auth-go[disabled] { opacity: .75; pointer-events: none; }
+.aspin {
+  width: 15px; height: 15px; border-radius: 999px; flex: none;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.auth-terms { margin: 16px 0 0; font-size: 11px; color: var(--muted); text-align: center; line-height: 1.55; }
+.auth-foot { text-align: center; margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+.auth-foot a { color: var(--accent); font-weight: 700; text-decoration: none; }
+.auth-foot a:hover { text-decoration: underline; }
+@media (max-width: 720px) {
+  .auth-grid { grid-template-columns: 1fr; min-height: 0; }
+  .auth-visual { display: none; }
+  .auth-formside { padding: 30px 24px 22px; }
+}
+
+/* avatar menu */
+.avamenu {
+  position: fixed; top: 70px; right: 24px; z-index: 95; min-width: 200px;
+  background: var(--bg-elev); border: 1px solid var(--line-2); border-radius: 15px;
+  box-shadow: var(--shadow); padding: 6px;
+  animation: menu-in .16s ease;
+}
+@keyframes menu-in { from { opacity: 0; transform: translateY(-5px) scale(.98); } }
+.avamenu-head { padding: 9px 11px 8px; }
+.avamenu-head b { display: block; font-size: 13.5px; }
+.avamenu-head span { font-size: 11.5px; color: var(--muted); }
+.avamenu button {
+  display: block; width: 100%; text-align: left; padding: 9px 11px;
+  border-radius: 9px; font-size: 13px; font-weight: 700; color: var(--ink-2);
+  transition: background .13s ease, color .13s ease;
+}
+.avamenu button:hover { background: var(--surface-2); color: var(--ink); }
+.avamenu button.danger { color: var(--danger); }
+.avamenu button.danger:hover { background: var(--danger-soft); }
+.avamenu-div { height: 1px; background: var(--line); margin: 5px 4px; }
+#authSlot .avatar { cursor: pointer; }
+
+/* ---------- modal ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(5, 6, 9, .62);
+  backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px);
+  display: grid; place-items: center; padding: 20px;
+  overflow: auto;
+  opacity: 0; pointer-events: none; transition: opacity .2s ease;
+}
+.overlay.open { opacity: 1; pointer-events: auto; }
+.sheet {
+  position: relative;
+  width: min(880px, 100%);
+  max-height: min(88vh, 860px);
+  display: flex; flex-direction: column;
+  background: var(--bg-elev); border: 1px solid var(--line-2); border-radius: 20px;
+  box-shadow: var(--shadow);
+  transform: translateY(14px) scale(.985); transition: transform .22s cubic-bezier(.2,.9,.25,1.1);
+  overflow: hidden;
+}
+.overlay.open .sheet { transform: none; }
+/* The buy button must stay reachable without hunting through the fee
+ * breakdown/description/seller card above it — especially on a narrow
+ * viewport where the single-column layout runs tall. Only the media+info
+ * area scrolls; the footer with "Buy with escrow" stays pinned in view. */
+.sheet-scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.sheet-footer {
+  flex: 0 0 auto;
+  padding: 14px 24px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-elev); border-top: 1px solid var(--line);
+}
+.sheet-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.sheet-media { position: relative; min-height: 280px; display: grid; place-items: center; overflow: hidden; }
+.sheet-media .cat-tag { position: absolute; top: 14px; left: 14px; z-index: 2; }
+.sheet-media .tile { width: 88px; height: 88px; border-radius: 26px; }
+.sheet-media .tile svg { width: 42px; height: 42px; }
+.sheet-x {
+  /* Pinned to the sheet itself (not .sheet-media) so it stays reachable
+   * even after the buyer scrolls .sheet-scroll past the media block. */
+  position: absolute; top: 14px; right: 14px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 999px;
+  background: rgba(10,11,15,.5); color: #fff;
+  backdrop-filter: blur(6px); display: grid; place-items: center;
+}
+.sheet-info { padding: 24px; border-left: 1px solid var(--line); }
+@media (max-width: 720px) {
+  .sheet-grid { grid-template-columns: 1fr; }
+  .sheet-info { border-left: 0; border-top: 1px solid var(--line); }
+  .sheet-media { min-height: 160px; }
+}
+.sheet-info h3 { font-size: 19px; font-weight: 800; letter-spacing: -.02em; line-height: 1.3; }
+.variant-picker { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.variant-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 12px; border-radius: 11px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--ink); cursor: pointer;
+  font: inherit; transition: border-color .15s ease, background .15s ease;
+}
+.variant-opt:hover { border-color: var(--accent-line); }
+.variant-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.variant-opt .vp-label { font-size: 12px; font-weight: 700; color: var(--muted); }
+.variant-opt.on .vp-label { color: var(--accent); }
+.variant-opt .vp-price { font-size: 14px; font-weight: 700; }
+.sheet-price { margin-top: 12px; display: flex; align-items: baseline; gap: 7px; }
+.sheet-price .p { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.sheet-price .c { font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--muted); }
+.sheet-desc { margin-top: 12px; font-size: 13.5px; color: var(--ink-2); line-height: 1.65; }
+.sheet-seller {
+  margin-top: 16px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 11px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 13px;
+}
+.sheet-seller .s-ava { width: 38px; height: 38px; font-size: 13.5px; }
+.sheet-seller .nm { font-size: 14px; font-weight: 800; display: flex; align-items: center; gap: 5px; }
+.sheet-seller .mt { font-size: 12px; color: var(--muted); }
+.sheet-seller .msg {
+  margin-left: auto; padding: 8px 13px; border-radius: 10px;
+  border: 1px solid var(--line-2); font-size: 12.5px; font-weight: 700; color: var(--ink-2);
+  transition: all .15s ease;
+}
+.sheet-seller .msg:hover { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.fees { margin-top: 16px; border: 1px solid var(--line); border-radius: 13px; overflow: hidden; }
+.fee-row { display: flex; justify-content: space-between; padding: 10px 14px; font-size: 13px; }
+.fee-row + .fee-row { border-top: 1px solid var(--line); }
+.fee-row .k { color: var(--muted); }
+.fee-row.total { background: var(--surface-2); font-weight: 800; }
+.fee-row.total .k { color: var(--ink); }
+.fee-note { margin-top: 9px; font-size: 12px; color: var(--muted); display: flex; gap: 7px; align-items: flex-start; line-height: 1.5; }
+.fee-note svg { flex: none; margin-top: 2px; color: var(--success); }
+.buybar { display: flex; gap: 10px; }
+.btn {
+  flex: 1; padding: 13px 18px; border-radius: 13px;
+  font-size: 14.5px; font-weight: 800; text-align: center;
+  transition: transform .12s ease, filter .15s ease;
+}
+.btn:active { transform: scale(.98); }
+.btn-pri { background: linear-gradient(135deg, var(--accent), #9a6fff); color: var(--accent-ink); box-shadow: 0 10px 24px -8px var(--accent); }
+.btn-pri:hover { filter: brightness(1.08); }
+.btn-sec { flex: none; border: 1px solid var(--line-2); color: var(--ink-2); padding: 13px 16px; }
+.btn-sec:hover { color: var(--ink); background: var(--surface-2); }
+.btn-pri.done { background: linear-gradient(135deg, #2fbf82, #3ecf8e); box-shadow: 0 10px 24px -8px var(--success); }
+
+/* ---------- bottom nav (mobile) ---------- */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
+  display: none;
+  background: var(--hdr); backdrop-filter: blur(20px) saturate(1.35); -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  border-top: 1px solid var(--line);
+  padding: 6px 10px calc(8px + env(safe-area-inset-bottom));
+}
+.tabbar-in { display: grid; grid-template-columns: repeat(5, 1fr); max-width: 480px; margin: 0 auto; }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; color: var(--muted); font-size: 10.5px; font-weight: 700; border-radius: 10px; }
+.tab.on { color: var(--accent); }
+.tab .fab {
+  width: 44px; height: 44px; margin-top: -22px; border-radius: 15px;
+  background: linear-gradient(135deg, var(--accent), #9a6fff); color: var(--accent-ink);
+  display: grid; place-items: center;
+  box-shadow: 0 8px 20px -4px var(--accent); border: 3px solid var(--bg);
+}
+@media (max-width: 860px) {
+  .tabbar { display: block; }
+  .app { padding: 0 16px 140px; }
+  .searchwrap { order: 10; flex-basis: 100%; max-width: none; }
+  .topbar-in { flex-wrap: wrap; row-gap: 10px; padding: 10px 16px; }
+  .topbar-actions { margin-left: auto; }
+  .wallet .cur { display: none; }
+}
+@media (max-width: 640px) {
+  .topbar-in { gap: 9px; }
+  .brand-name { font-size: 15px; }
+  .brand-mark { width: 30px; height: 30px; border-radius: 9px; }
+  .wallet { padding: 6px 7px 6px 11px; }
+  .wallet .amt { font-size: 12.5px; }
+  .iconbtn, .avatar { width: 34px; height: 34px; }
+  .filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .filters > * { flex: none; }
+  .filters .reset { margin-left: auto; }
+}
+
+/* ---------- toasts ---------- */
+.toasts { position: fixed; bottom: 24px; left: 50%; translate: -50% 0; z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.pay-overlay.open ~ .toasts { z-index: 100; }
+@media (max-width: 860px) { .toasts { bottom: 96px; } }
+.toast {
+  padding: 11px 18px; border-radius: 999px;
+  background: var(--surface-3); border: 1px solid var(--line-2); color: var(--ink);
+  font-size: 13.5px; font-weight: 700; box-shadow: var(--shadow-sm);
+  display: flex; align-items: center; gap: 9px;
+  animation: toast-in .25s cubic-bezier(.2,.9,.3,1.2);
+  max-width: min(92vw, 480px);
+}
+.toast.ok::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--success); flex: none; }
+.toast.info::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--accent); flex: none; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+.toast.out { transition: opacity .3s ease, transform .3s ease; opacity: 0; transform: translateY(8px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+<link rel="stylesheet" href="/theme.css?v=10">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- top bar (Eldorado-style dark chrome) -->
+  <header class="topbar"><div class="topbar-in">
+    <div class="topbar-row">
+      <a class="brand brand-logo" href="#" aria-label="Dot Marketplace home">
+        <svg class="brand-wordmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 44" height="40" aria-hidden="true" focusable="false">
+          <defs>
+            <linearGradient id="bm-g" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ffd64d"/>
+              <stop offset=".55" stop-color="#ffc800"/>
+              <stop offset="1" stop-color="#f0b000"/>
+            </linearGradient>
+          </defs>
+          <rect width="44" height="44" rx="13" fill="url(#bm-g)"/>
+          <circle cx="20" cy="25" r="8.2" fill="#17130a"/>
+          <circle cx="20" cy="25" r="12.6" fill="none" stroke="#17130a" stroke-width="2" opacity=".4"/>
+          <circle cx="27.2" cy="14.7" r="3" fill="#17130a"/>
+          <text x="56" y="29.5" font-family="'Unbounded', Manrope, -apple-system, sans-serif" font-size="19"><tspan fill="#ffffff" font-weight="800">Dot</tspan><tspan dx="6" fill="rgba(255,255,255,.62)" font-weight="500">Marketplace</tspan></text>
+        </svg>
+      </a>
+      <div class="searchwrap">
+        <label class="searchbox" for="q">
+          <input class="search" id="q" type="text" placeholder="Search marketplace…" aria-label="Search the market" autocomplete="off" enterkeyhint="search">
+        </label>
+      </div>
+      <div class="topbar-actions">
+        <div class="wallet" title="Your escrow wallet">
+          <span class="amt mono" id="walletAmt">1,284.50</span>
+          <span class="cur">USDT</span>
+          <button class="topup" id="topup" aria-label="Top up wallet">+</button>
+        </div>
+        <span id="authSlot"></span>
+      </div>
+    </div>
+    <nav class="pagenav" id="pagenav" aria-label="Sections">
+      <button class="ptab on" data-view="market">Market</button>
+      <button class="ptab" data-view="forum">Forum</button>
+      <button class="ptab" data-view="community">Community</button>
+      <button class="ptab" data-view="escrow">Escrow</button>
+      <button class="ptab" data-view="deals">Deals</button>
+      <button class="ptab" data-view="messages">Messages<span class="navdot" id="chatDot" hidden></span></button>
+      <button class="ptab" data-view="wallet">Wallet</button>
+    </nav>
+  </div></header>
+
+<section class="view on" id="view-market">
+  <div class="market-landing">
+    <div class="promo-banner trust" id="trust">
+      <p><strong>Escrow on every deal</strong> — funds stay locked until you confirm delivery</p>
+      <button class="x" id="trustX" aria-label="Dismiss">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"/></svg>
+      </button>
+    </div>
+
+    <section class="hero" id="hero" aria-label="Featured promotion"></section>
+
+    <div class="market-body">
+  <div class="popular-wrap" id="popularWrap" aria-label="Popular categories"></div>
+
+  <div class="layout">
+    <!-- ============ MARKET ============ -->
+    <main>
+      <div class="mk-head">
+        <h1>All listings</h1>
+        <span class="count" id="mkCount"></span>
+      </div>
+      <nav class="chips" id="chips" aria-label="Categories"></nav>
+
+      <div class="filters">
+        <span class="lbl">Sort</span>
+        <select class="select" id="sort" aria-label="Sort listings">
+          <option value="new">Newest first</option>
+          <option value="plo">Price: low to high</option>
+          <option value="phi">Price: high to low</option>
+          <option value="rate">Top rated sellers</option>
+        </select>
+        <label class="toggle">
+          <input type="checkbox" id="vfy">
+          <span class="tk" aria-hidden="true"></span>
+          <span class="tl">Verified sellers only</span>
+        </label>
+        <button class="reset" id="reset">Reset</button>
+      </div>
+
+      <div class="grid" id="grid" aria-live="polite"></div>
+    </main>
+
+    <!-- ============ ESCROW DESK (hidden on market — sidebar data still renders) ============ -->
+    <aside class="rail" hidden aria-hidden="true">
+      <section class="panel" aria-label="Your active deals">
+        <h2>Escrow desk</h2>
+        <div id="deals"></div>
+        <a class="rail-all" href="#deals" data-go="deals">View all deals →</a>
+      </section>
+
+      <section class="panel" aria-label="How escrow works">
+        <h2>How escrow works</h2>
+        <div class="how">
+          <div class="how-row"><span class="how-n">1</span><div><b>You pay into escrow</b><span>Payment is locked by Dot Marketplace. It never goes straight to the seller.</span></div></div>
+          <div class="how-row"><span class="how-n">2</span><div><b>Seller delivers</b><span>You agree an inspection window in the deal chat and check everything works.</span></div></div>
+          <div class="how-row"><span class="how-n">3</span><div><b>You confirm, funds release</b><span>Confirm delivery and the payout goes to the seller. A problem? The arbiter reviews the evidence from both sides.</span></div></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="This week in escrow">
+        <h2>This week</h2>
+        <div class="stat-strip">
+          <div class="stat"><div class="v mono">312</div><div class="k">deals</div></div>
+          <div class="stat"><div class="v mono">$84.0k</div><div class="k">in escrow</div></div>
+          <div class="stat"><div class="v mono">98.2%</div><div class="k">completed</div></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Top sellers">
+        <h2>Top sellers</h2>
+        <div id="topSellers"></div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="how-section" aria-label="How Dot Marketplace works">
+    <span class="sec-eyebrow">How it works</span>
+    <h2>Three steps between you and a done deal</h2>
+    <p class="sec-sub">No trusting strangers, no "send first" — the escrow holds the money until both sides have done their part.</p>
+    <div class="hiw-grid">
+      <div class="hiw-card">
+        <span class="hiw-num">01</span>
+        <span class="hiw-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16.5 15h.01"/></svg></span>
+        <h3>Pay into escrow</h3>
+        <p>You pay exactly the listed price. Funds are locked by Dot Marketplace — never sent straight to the seller.</p>
+      </div>
+      <div class="hiw-card">
+        <span class="hiw-num">02</span>
+        <span class="hiw-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3c-1.5 0-3-.4-4.2-1.1L3 20l1.4-4.1A8.3 8.3 0 1 1 21 11.5Z"/><path d="m9 11.6 2.2 2.2L15.4 9.6"/></svg></span>
+        <h3>Seller delivers in chat</h3>
+        <p>Credentials, files, transfers — everything happens inside the deal chat, on the record for the arbiter.</p>
+      </div>
+      <div class="hiw-card">
+        <span class="hiw-num">03</span>
+        <span class="hiw-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V5.8L12 3Z"/><path d="m9 11.6 2.2 2.2L15.4 9.6"/></svg></span>
+        <h3>Confirm — funds release</h3>
+        <p>Inspect during the agreed window, confirm, and the payout releases. A problem? The dispute freezes everything.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="safe-section" aria-label="Safe and easy trading">
+    <span class="sec-eyebrow">Why Dot Marketplace</span>
+    <h2>Safe and easy trading</h2>
+    <div class="safe-cards">
+      <div class="safe-card">
+        <div class="safe-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V5.8L12 3Z"/><path d="m9 11.6 2.2 2.2L15.4 9.6"/></svg></div>
+        <h3>Money-back guarantee</h3>
+        <p>Receive your order or get a refund. Every trade is protected by escrow from start to finish.</p>
+      </div>
+      <div class="safe-card">
+        <div class="safe-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13a8 8 0 0 1 16 0"/><rect x="2.5" y="13" width="4.5" height="6.5" rx="2.2"/><rect x="17" y="13" width="4.5" height="6.5" rx="2.2"/><path d="M19.5 19.5v.7a2.8 2.8 0 0 1-2.8 2.8H13"/></svg></div>
+        <h3>24/7 live support</h3>
+        <p>Deal chat keeps everything on the record. Disputes are reviewed with full evidence from both sides.</p>
+      </div>
+      <div class="safe-card">
+        <div class="safe-card-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11L9.8 22 19 10h-6.5L13 2Z"/></svg></div>
+        <h3>Instant delivery</h3>
+        <p>Digital goods delivered inside the deal chat. Confirm and funds release to the seller automatically.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-band" aria-label="Get started">
+    <h2>Ready to trade without the risk?</h2>
+    <p>Join thousands of traders buying and selling digital goods with escrow protection on every single deal.</p>
+    <div class="cta-btns">
+      <button class="btn btn-pri" data-go="market">Browse the market</button>
+      <a class="btn cta-ghost" href="/seller/">Become a seller</a>
+    </div>
+  </section>
+
+  </div><!-- .market-body -->
+  </div><!-- .market-landing -->
+</section>
+
+  <!-- ============ FORUM ============ -->
+  <section class="view" id="view-forum">
+    <div class="mk-head"><h1>Forum</h1><span class="count">Announcements, questions and showcases from traders</span></div>
+    <div class="composer">
+      <span class="avatar" id="composerAva" style="background:linear-gradient(135deg,#6f7cff,#a05fd4)">?</span>
+      <input class="composer-in" id="composerIn" placeholder="Start a thread — add a title, details and a section…" aria-label="Start a thread">
+      <button class="btn btn-pri composer-btn" id="composerBtn">Post</button>
+    </div>
+    <nav class="chips" id="forumChips" aria-label="Thread filters"></nav>
+    <div id="threads" class="threads"></div>
+  </section>
+
+  <!-- ============ COMMUNITY ============ -->
+  <section class="view" id="view-community">
+    <div class="mk-head"><h1>Community</h1><span class="count">The people trading behind the escrows</span></div>
+    <div class="stat-strip comm-stats">
+      <div class="stat"><div class="v mono">0</div><div class="k">sellers</div></div>
+      <div class="stat"><div class="v mono">0</div><div class="k">verified</div></div>
+      <div class="stat"><div class="v mono">0</div><div class="k">deals completed</div></div>
+      <div class="stat"><div class="v mono">0</div><div class="k">active listings</div></div>
+    </div>
+    <div class="comm-grid">
+      <section class="panel" aria-label="Seller leaderboard">
+        <h2>Seller leaderboard</h2>
+        <div id="leaders"></div>
+      </section>
+      <div class="comm-side">
+        <section class="panel" aria-label="New members">
+          <h2>New this week</h2>
+          <div class="newbies" id="newbies"></div>
+        </section>
+        <section class="panel" aria-label="Community rules">
+          <h2>House rules</h2>
+          <div class="rules">
+            <div class="rule"><b>Trade inside escrow.</b><span>Deals moved off-platform lose all protection.</span></div>
+            <div class="rule"><b>Keep chat on-platform.</b><span>The arbiter can only review what's written in the deal chat.</span></div>
+            <div class="rule"><b>Rate after every deal.</b><span>Ratings are only accepted from completed escrow deals.</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SELLER PROFILE ============ -->
+  <section class="view" id="view-seller">
+    <div id="sellerProfileRoot"></div>
+  </section>
+
+  <!-- ============ ESCROW ============ -->
+  <section class="view" id="view-escrow">
+    <div class="mk-head"><h1>Escrow</h1><span class="count">How every deal stays safe, end to end</span></div>
+    <div class="esc-hero panel">
+      <div class="esc-hero-txt">
+        <h2>Money never goes straight to the seller.</h2>
+        <p>Every payment on Dot Marketplace is locked in escrow first. The seller delivers, you inspect, and only your confirmation releases the funds. If something goes wrong, an arbiter reviews the evidence from both sides.</p>
+      </div>
+      <span class="esc-hero-shield" aria-hidden="true">
+        <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V5.8L12 3Z"/><path d="m9 11.6 2.2 2.2L15.4 9.6"/></svg>
+      </span>
+    </div>
+    <div class="esc-steps">
+      <div class="panel esc-step"><span class="how-n">1</span><b>Pay into escrow</b><span>The buyer pays exactly the listed price. Funds are locked by Dot Marketplace — never sent to the seller.</span></div>
+      <div class="panel esc-step"><span class="how-n">2</span><b>Seller delivers</b><span>Delivery happens inside the deal chat: credentials, files, transfers — everything on the record.</span></div>
+      <div class="panel esc-step"><span class="how-n">3</span><b>Inspection window</b><span>Both sides agree a window to verify the goods. We only escrow what a buyer can genuinely inspect.</span></div>
+      <div class="panel esc-step"><span class="how-n">4</span><b>Release or arbitrate</b><span>Confirm delivery and the payout releases. A dispute freezes everything until the arbiter decides.</span></div>
+    </div>
+    <div class="comm-grid">
+      <section class="panel">
+        <h2>The fee</h2>
+        <div class="fees esc-fee">
+          <div class="fee-row"><span class="k">Crypto processing fee</span><span class="mono" id="escrowGatewayFee">0.5% · paid by buyer</span></div>
+          <div class="fee-row"><span class="k">Platform fee</span><span class="mono" id="escrowFeePct">2.5% of the deal</span></div>
+          <div class="fee-row"><span class="k">Platform fee charged to</span><span class="mono">the seller's payout</span></div>
+          <div class="fee-row total"><span class="k">Charged when</span><span class="mono">only on completed deals</span></div>
+        </div>
+        <p class="fee-note" style="margin-top:12px">A deal that is cancelled or refunded never pays a fee. Limits: 100,000 USDT per deal.</p>
+      </section>
+      <section class="panel">
+        <h2>Common questions</h2>
+        <details class="faq"><summary>What if the seller never delivers?</summary><p>Open a dispute from the deal screen. The escrow stays frozen, the arbiter reviews the deal chat, and undelivered funds return to you in full.</p></details>
+        <details class="faq"><summary>Can the seller run off with the money?</summary><p>No. The seller never touches your payment until you confirm delivery — the funds sit with Dot Marketplace, not with them.</p></details>
+        <details class="faq"><summary>What can be sold through escrow?</summary><p>Anything a buyer can genuinely inspect and confirm: accounts, subscriptions, software, services, digital goods and game items.</p></details>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ DEALS ============ -->
+  <section class="view" id="view-deals">
+    <div class="mk-head"><h1>Deals</h1><span class="count" id="dealCount"></span></div>
+    <nav class="chips" id="dealTabs" aria-label="Deal filters"></nav>
+    <div id="dealList" class="deal-list"></div>
+  </section>
+
+  <!-- ============ MESSAGES ============ -->
+  <section class="view" id="view-messages">
+    <div class="mk-head"><h1>Messages</h1><span class="count">Deal chats and direct messages — everything on the record</span></div>
+    <div class="chatwrap" id="chatwrap">
+      <aside class="chatlist" id="chatlist" aria-label="Conversations"></aside>
+      <div class="chatpane" id="chatpane"></div>
+    </div>
+  </section>
+
+  <!-- ============ WALLET ============ -->
+  <section class="view" id="view-wallet">
+    <div class="mk-head"><h1>Wallet</h1><span class="count">USDT on TRC-20 · deposits credit after 1 confirmation</span></div>
+    <div class="walt">
+      <div class="walt-card">
+        <div class="walt-lbl">Available balance</div>
+        <div class="walt-amt mono"><span id="waltAvail">1,284.50</span><span class="walt-cur">USDT</span></div>
+        <div class="walt-sub mono" id="waltLocked"></div>
+        <div class="walt-btns">
+          <button class="btn btn-pri" data-wdemo="Top up — a fresh TRC-20 deposit address generates here">Top up</button>
+        </div>
+      </div>
+      <section class="panel" aria-label="Transactions">
+        <h2>Transactions</h2>
+        <div id="txs" class="txs"></div>
+      </section>
+    </div>
+  </section>
+
+  <footer class="site-footer" aria-label="Site footer">
+    <div class="site-footer-in">
+      <div class="footer-brand">
+        <span class="brand-name"><em>Dot</em> Marketplace</span>
+        <p>Join us today to buy and sell digital goods with full escrow protection on every deal.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <a href="#" data-go="escrow">How escrow works</a>
+        <a href="#" data-go="deals">My deals</a>
+        <a href="#" data-go="wallet">Wallet</a>
+        <a href="#" data-go="messages">Messages</a>
+      </div>
+      <div class="footer-col">
+        <h4>Marketplace</h4>
+        <a href="#" data-go="market">Browse listings</a>
+        <a href="/seller/">Become a seller</a>
+        <a href="#" data-go="forum">Forum</a>
+        <a href="#" data-go="community">Community</a>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <a href="#">Terms of Service</a>
+        <a href="#">Privacy Policy</a>
+        <a href="#">Refund Policy</a>
+        <a href="#">Fees</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Dot Marketplace. All rights reserved.</span>
+      <span><a href="#" data-go="escrow">Escrow protection</a> · <a href="#">Contact</a></span>
+    </div>
+  </footer>
+
+</div>
+
+<!-- bottom tab bar -->
+<nav class="tabbar" aria-label="Primary"><div class="tabbar-in">
+  <button class="tab on" data-view="market">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.4 12.1a2 2 0 0 1-2 1.9H7.4a2 2 0 0 1-2-1.9L4 7Z"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>
+    Market
+  </button>
+  <button class="tab" data-view="forum">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3c-1.5 0-3-.4-4.2-1.1L3 20l1.4-4.1A8.3 8.3 0 1 1 21 11.5Z"/></svg>
+    Forum
+  </button>
+  <a class="tab" href="/seller/" aria-label="Seller portal">
+    <span class="fab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+  </a>
+  <button class="tab" data-view="deals">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V5.8L12 3Z"/></svg>
+    Deals
+  </button>
+  <button class="tab" data-view="wallet">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16.5 15h.01"/></svg>
+    Wallet
+  </button>
+</div></nav>
+
+<!-- auth modal -->
+<div class="overlay auth-overlay" id="authOverlay" role="dialog" aria-modal="true" aria-label="Authentication">
+  <div class="auth-card">
+    <button class="auth-x" data-ax aria-label="Close">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"/></svg>
+    </button>
+    <div class="auth-grid">
+      <div class="auth-visual">
+        <div class="av-top">
+          <span class="brand-mark" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 44 44" fill="none"><circle cx="20" cy="25" r="9" fill="#fff"/><circle cx="20" cy="25" r="14" stroke="#fff" stroke-width="4" opacity=".45"/><circle cx="28.5" cy="13.5" r="4.5" fill="#fff" opacity=".8"/></svg></span>
+          <span class="av-word">Dot Marketplace</span>
+        </div>
+        <div class="av-bottom">
+          <h4>Every deal,<br>escrowed.</h4>
+          <p>Payments lock until you confirm delivery. Sellers get paid on proof, not promises.</p>
+          <div class="av-stats">
+            <div><b class="mono">312</b><span>deals this week</span></div>
+            <div><b class="mono">$84k</b><span>held in escrow</span></div>
+            <div><b class="mono">98.2%</b><span>completed clean</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="auth-formside">
+        <h3 id="authTitle">Create your account</h3>
+        <p class="auth-sub" id="authSub">Buy and sell anything — every deal protected by escrow.</p>
+        <div class="auth-tabs" role="tablist">
+          <span class="atab-thumb" aria-hidden="true"></span>
+          <button type="button" data-amode="in" role="tab">Sign in</button>
+          <button type="button" data-amode="up" role="tab" class="on">Sign up</button>
+        </div>
+        <form id="authForm" novalidate>
+          <label class="af" id="afName">
+            <span>Display name</span>
+            <input id="authName" type="text" placeholder="e.g. dusk_trader" autocomplete="username">
+            <em class="aerr"></em>
+          </label>
+          <label class="af">
+            <span>Email</span>
+            <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email">
+            <em class="aerr"></em>
+          </label>
+          <label class="af">
+            <span>Password</span>
+            <span class="apw">
+              <input id="authPass" type="password" placeholder="At least 8 characters" autocomplete="current-password">
+              <button type="button" id="pwToggle" aria-label="Show password">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.8"/></svg>
+              </button>
+            </span>
+            <span class="pwmeter" id="pwMeter" aria-hidden="true"><i></i><i></i><i></i><i></i><b id="pwLabel"></b></span>
+            <em class="aerr"></em>
+          </label>
+          <button class="btn auth-go" id="authGo" type="submit">Create account</button>
+        </form>
+        <form id="verifyForm" novalidate hidden>
+          <label class="af">
+            <span>Verification code</span>
+            <input id="verifyCode" type="text" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" style="letter-spacing:6px;font-size:20px;text-align:center;font-weight:700">
+            <em class="aerr"></em>
+          </label>
+          <button class="btn auth-go" id="verifyGo" type="submit">Verify email</button>
+          <p class="auth-foot" style="margin-top:10px">
+            <a href="#" id="verifyResend">Resend code</a> · <a href="#" id="verifySkip">Skip for now</a>
+          </p>
+        </form>
+        <p class="auth-terms">By continuing you agree to the Terms — and that every trade runs through escrow.</p>
+        <p class="auth-foot"><a href="#" id="authSwap">Already have an account? Sign in</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="avamenu" id="avaMenu" hidden>
+  <div class="avamenu-head">
+    <span class="avatar avamenu-ava" id="avMenuAva">?</span>
+    <span class="avamenu-who"><b id="avName"></b><span id="avEmail"></span></span>
+  </div>
+  <div class="avamenu-div"></div>
+  <button data-am="deals"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 5.8v5.4c0 4.3 3 7.4 7 9 4-1.6 7-4.7 7-9V5.8L12 3Z"/><path d="m9 11.6 2.2 2.2L15.4 9.6"/></svg>My deals</button>
+  <button data-am="wallet"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M16.5 15h.01"/></svg>Wallet</button>
+  <button data-am="messages"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3c-1.5 0-3-.4-4.2-1.1L3 20l1.4-4.1A8.3 8.3 0 1 1 21 11.5Z"/></svg>Messages</button>
+  <div class="avamenu-div"></div>
+  <button data-am="out" class="danger"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></svg>Sign out</button>
+</div>
+
+<!-- payment modal -->
+<div class="overlay pay-overlay" id="payOverlay" role="dialog" aria-modal="true" aria-label="Payment">
+  <div class="pay-card" id="payCard"></div>
+</div>
+
+<!-- receipt modal -->
+<div class="overlay pay-overlay" id="receiptOverlay" role="dialog" aria-modal="true" aria-label="Receipt">
+  <div class="pay-card" id="receiptCard"></div>
+</div>
+
+<!-- listing modal -->
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="Listing details">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="/js/app.js"></script>
+
