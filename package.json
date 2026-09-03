@@ -10,7 +10,9 @@
     "seed:listings": "node scripts/seed-listings.js",
     "seed:admin": "node scripts/seed-admin.js",
     "seed": "npm run seed:accounts && npm run seed:listings && npm run seed:admin",
-    "db:up": "docker start dot-marketplace-mongo 2>/dev/null || docker run -d --name dot-marketplace-mongo -p 27017:27017 -v dot_marketplace_mongo:/data/db --restart unless-stopped mongo:7",
+    "db:up": "bash scripts/db-up.sh",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh",
     "db:down": "docker stop dot-marketplace-mongo",
     "test": "node --test test/*.test.js"
   },
