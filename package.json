@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "db:check": "node scripts/check-mongo.js",
+    "db:verify": "node scripts/verify-db.js",
     "seed:accounts": "node scripts/seed-accounts.js",
     "seed:listings": "node scripts/seed-listings.js",
     "seed:admin": "node scripts/seed-admin.js",

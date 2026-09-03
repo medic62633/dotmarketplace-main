@@ -151,11 +151,29 @@ app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
 
-/* ---------- #13 liveness / readiness probe ---------- */
+/* ---------- #13 liveness / readiness probe ----------
+ * Previously this only checked `mongoClient` truthiness — set once at boot
+ * and never cleared, so it reported db:'mongo', ok:true forever even after
+ * the connection actually dropped mid-session. It's now an ACTIVE probe: a
+ * short-timeout ping against the real connection, so a monitor polling this
+ * (uptime check, PM2, a cron alert) actually finds out when Mongo is down
+ * instead of everything looking fine right up until a request fails. */
 app.get('/healthz', async (req, res) => {
-  const db = memory ? 'memory' : (mongoClient ? 'mongo' : 'down');
-  const ok = db !== 'down';
-  res.status(ok ? 200 : 503).json({ ok, db, uptime: Math.round(process.uptime()), ts: Date.now() });
+  if (memory) {
+    // Working, but explicitly flagged: this is the non-durable dev store —
+    // a monitor should treat this as a warning if seen in production.
+    return res.status(200).json({ ok: true, db: 'memory', durable: false, uptime: Math.round(process.uptime()), ts: Date.now() });
+  }
+  if (!mongoClient) {
+    return res.status(503).json({ ok: false, db: 'down', uptime: Math.round(process.uptime()), ts: Date.now() });
+  }
+  try {
+    await mongoClient.db('dotmarket').command({ ping: 1 }, { timeoutMS: 4000 });
+    res.status(200).json({ ok: true, db: 'mongo', durable: true, uptime: Math.round(process.uptime()), ts: Date.now() });
+  } catch (err) {
+    console.error('⚠ /healthz: MongoDB ping failed —', err.message);
+    res.status(503).json({ ok: false, db: 'mongo', durable: true, error: err.message, uptime: Math.round(process.uptime()), ts: Date.now() });
+  }
 });
 
 // Behind a reverse proxy, honor X-Forwarded-For so the portal IP allowlist and
@@ -218,6 +236,9 @@ let mongoClient, usersCol, statesCol, conversationsCol, messagesCol, listingsCol
 // sequential-writes behavior when this is false, so a standalone deployment
 // sees no behavior change from before transactions existed here.
 let txnSupported = false;
+// Tracks whether the last MongoDB server heartbeat failed, so a recovery is
+// logged exactly once instead of on every successful heartbeat (~every 10s).
+let dbHeartbeatDown = false;
 
 // Demo-only auth shortcut (passwordless seller inbox login). Off by default —
 // must be explicitly enabled for local demos.
@@ -434,6 +455,24 @@ async function connectDb() {
     stockCol = db.collection('stock');
     verificationsCol = db.collection('email_verifications');
     mongoClient = client;
+    // The driver reconnects on its own and existing operations already
+    // retry (retryWrites/retryReads in the URI) — this is purely visibility:
+    // previously a mid-session Mongo outage was invisible until a request
+    // happened to fail and someone noticed. Now it's in the logs the moment
+    // it starts, and again the moment it clears, independent of traffic.
+    client.on('serverHeartbeatFailed', (event) => {
+      dbHeartbeatDown = true;
+      console.error(`⚠ MongoDB heartbeat failed (${event.connectionId}): ${event.failure?.message || event.failure}`);
+    });
+    client.on('serverHeartbeatSucceeded', () => {
+      if (dbHeartbeatDown) {
+        dbHeartbeatDown = false;
+        console.log('✓ MongoDB heartbeat recovered');
+      }
+    });
+    client.on('close', () => {
+      console.error('⚠ MongoDB connection closed.');
+    });
     const host = uri.startsWith('mongodb+srv://') ? 'MongoDB Atlas' : uri.replace(/\/\/([^@]+@)?/, '//');
     console.log('✓ Connected to MongoDB (' + host + ')');
     // Multi-document transactions need a replica set (Atlas always is one; a
