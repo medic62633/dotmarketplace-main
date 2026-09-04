@@ -146,6 +146,8 @@ function handleSessionExpired() {
   try { localStorage.removeItem('dk_user'); localStorage.removeItem('dk_token'); } catch (e) {}
   AUTH = null;
   remoteReady = false;
+  FAVORITES = new Set();
+  S.saved = false;
   paintAuth();
   loadState(false);
   refreshUserViews();
@@ -179,6 +181,7 @@ async function syncFromServer() {
       await syncChatInbox();
       syncDealStates();
       loadListings();
+      loadFavorites();
     }
   } catch (e) { /* offline — local cache keeps working */ }
 }
@@ -258,7 +261,8 @@ const DEALMETA = {
 };
 
 /* ================= state ================= */
-const S = { cat: 'all', q: '', sort: 'new', vfy: false };
+const S = { cat: 'all', q: '', sort: 'new', vfy: false, saved: false };
+let FAVORITES = new Set();
 
 /* ================= market ================= */
 const $ = s => document.querySelector(s);
@@ -370,6 +374,7 @@ function filtered() {
   let out = LISTINGS.filter(l =>
     (S.cat === 'all' || l.cat === S.cat) &&
     (!S.vfy || l.seller.vfy) &&
+    (!S.saved || FAVORITES.has(l.id)) &&
     (!S.q || (l.title + ' ' + l.seller.name).toLowerCase().includes(S.q))
   );
   const by = {
@@ -398,15 +403,19 @@ function renderGrid() {
   const list = filtered();
   $('#mkCount').textContent = list.length + (list.length === 1 ? ' listing' : ' listings');
   if (!list.length) {
-    grid.innerHTML = LISTINGS.length
-      ? `<div class="empty"><b>Nothing matches</b>Try another category, or clear the search and filters.</div>`
-      : `<div class="empty"><b>No listings yet</b>New listings will appear here once sellers post them.</div>`;
+    grid.innerHTML = S.saved
+      ? `<div class="empty"><b>No saved listings</b>Tap the heart on a listing to save it here.</div>`
+      : LISTINGS.length
+        ? `<div class="empty"><b>Nothing matches</b>Try another category, or clear the search and filters.</div>`
+        : `<div class="empty"><b>No listings yet</b>New listings will appear here once sellers post them.</div>`;
     return;
   }
   grid.innerHTML = list.map((l) => {
     const catLabel = (CATS.find(c => c.id === l.cat) || { label: l.cat || 'Other' }).label;
     const hasImg = !!l.image;
+    const isFav = FAVORITES.has(l.id);
     return `
+    <div class="card-wrap">
     <button class="card" data-open="${l.id}" aria-label="${esc(l.title)} — ${fmt(l.price)} USDT">
       <span class="thumb thumb-cat-${l.cat}${hasImg ? ' has-img' : ''}">
         <span class="cat-tag">${catLabel}</span>
@@ -423,7 +432,11 @@ function renderGrid() {
         </span>
         <span class="card-tags" style="display:flex">${activeDealFor(l.id) ? `<span class="ctag active">${ACTIVE_LBL[activeDealFor(l.id).status]}</span>` : ''}${(CATTAGS[l.cat] || []).map(t => `<span class="ctag">${t}</span>`).join('')}</span>
       </span>
-    </button>`;
+    </button>
+    <button class="card-fav${isFav ? ' on' : ''}" type="button" data-fav="${l.id}" aria-pressed="${isFav}" aria-label="${isFav ? 'Remove from saved' : 'Save listing'}">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.7-4.35-9.3-8.1C1 10 1.7 6.2 5 4.7c2.4-1.1 4.9-.2 7 2 2.1-2.2 4.6-3.1 7-2 3.3 1.5 4 5.3 2.3 8.2C18.7 16.65 12 21 12 21Z"/></svg>
+    </button>
+    </div>`;
   }).join('');
 }
 
@@ -593,9 +606,13 @@ function openListing(id) {
     });
   }
 
+  const sheetIsFav = FAVORITES.has(l.id);
   sheet.innerHTML = `
   <button class="sheet-x" data-close aria-label="Close">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5 5 19"/></svg>
+  </button>
+  <button class="sheet-fav${sheetIsFav ? ' on' : ''}" type="button" data-sheet-fav="${esc(l.id)}" aria-pressed="${sheetIsFav}" aria-label="${sheetIsFav ? 'Remove from saved' : 'Save listing'}">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.7-4.35-9.3-8.1C1 10 1.7 6.2 5 4.7c2.4-1.1 4.9-.2 7 2 2.1-2.2 4.6-3.1 7-2 3.3 1.5 4 5.3 2.3 8.2C18.7 16.65 12 21 12 21Z"/></svg>
   </button>
   <div class="sheet-scroll">
     <div class="sheet-grid">
@@ -628,6 +645,7 @@ function openListing(id) {
     </div>
   </div>`;
   bindVariantPicker();
+  sheet.querySelector('[data-sheet-fav]')?.addEventListener('click', () => toggleFavorite(l.id));
   sheet.querySelectorAll('[data-thumb]').forEach(btn => {
     btn.addEventListener('click', () => {
       const img = $('#sheetMainImg');
@@ -1287,12 +1305,16 @@ chipsEl.addEventListener('click', e => {
 $('#q').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); refresh(); });
 $('#sort').addEventListener('change', e => { S.sort = e.target.value; refresh(); });
 $('#vfy').addEventListener('change', e => { S.vfy = e.target.checked; refresh(); });
+$('#saved')?.addEventListener('change', e => { S.saved = e.target.checked; refresh(); });
 $('#reset').addEventListener('click', () => {
-  S.cat = 'all'; S.q = ''; S.sort = 'new'; S.vfy = false;
+  S.cat = 'all'; S.q = ''; S.sort = 'new'; S.vfy = false; S.saved = false;
   $('#q').value = ''; $('#sort').value = 'new'; $('#vfy').checked = false;
+  const savedEl = $('#saved'); if (savedEl) savedEl.checked = false;
   renderChips(); renderPopular(); refresh();
 });
 grid.addEventListener('click', e => {
+  const f = e.target.closest('[data-fav]');
+  if (f) { toggleFavorite(f.dataset.fav); return; }
   const c = e.target.closest('[data-open]');
   if (c) openListing(c.dataset.open);
 });
@@ -2492,6 +2514,51 @@ function upsertChat(conv) {
   return row;
 }
 
+function paintFavButtons(id) {
+  const isFav = FAVORITES.has(id);
+  document.querySelectorAll(`[data-fav="${CSS.escape(id)}"]`).forEach(b => {
+    b.classList.toggle('on', isFav);
+    b.setAttribute('aria-pressed', String(isFav));
+    b.setAttribute('aria-label', isFav ? 'Remove from saved' : 'Save listing');
+  });
+  const sf = sheet.querySelector('[data-sheet-fav]');
+  if (sf && sf.dataset.sheetFav === id) {
+    sf.classList.toggle('on', isFav);
+    sf.setAttribute('aria-pressed', String(isFav));
+    sf.setAttribute('aria-label', isFav ? 'Remove from saved' : 'Save listing');
+  }
+}
+
+async function toggleFavorite(id) {
+  if (!AUTH) { openAuth('up', () => toggleFavorite(id)); toast('Sign up to save listings for later', 'info'); return; }
+  const wasFav = FAVORITES.has(id);
+  if (wasFav) FAVORITES.delete(id); else FAVORITES.add(id);
+  if (S.saved) renderGrid(); else paintFavButtons(id);
+  try {
+    const r = await fetch('/api/favorites/' + encodeURIComponent(id), {
+      method: wasFav ? 'DELETE' : 'POST',
+      headers: authHeaders(),
+    });
+    if (r.status === 401) { handleSessionExpired(); openAuth('in'); return; }
+    if (!r.ok) throw new Error('request failed');
+  } catch (e) {
+    if (wasFav) FAVORITES.add(id); else FAVORITES.delete(id);
+    if (S.saved) renderGrid(); else paintFavButtons(id);
+    toast('Could not update saved listings — try again', 'err');
+  }
+}
+
+async function loadFavorites() {
+  if (!AUTH || !hasApiSession()) return;
+  try {
+    const r = await fetch('/api/favorites', { headers: authHeaders() });
+    if (!r.ok) return;
+    const { ids } = await r.json();
+    FAVORITES = new Set(Array.isArray(ids) ? ids : []);
+    renderGrid();
+  } catch (e) { /* offline */ }
+}
+
 async function syncChatInbox() {
   if (!AUTH) { CHATS = []; renderChatList(); paintChatBadge(); return; }
   if (!hasApiSession()) return;
@@ -3146,6 +3213,9 @@ document.addEventListener('click', e => {
     if (am.dataset.am === 'out') {
       try { localStorage.removeItem('dk_user'); localStorage.removeItem('dk_token'); } catch (err) {}
       AUTH = null;
+      FAVORITES = new Set();
+      S.saved = false;
+      const savedEl = $('#saved'); if (savedEl) savedEl.checked = false;
       paintAuth();
       loadState(false);
       refreshUserViews();

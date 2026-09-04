@@ -243,7 +243,7 @@ app.get('/uploads/chat/:file', async (req, res) => {
 app.use(express.static('public'));
 
 /* ---------- storage layer: MongoDB when configured, in-memory dev store otherwise ---------- */
-let mongoClient, usersCol, statesCol, conversationsCol, messagesCol, listingsCol, sellerProfilesCol, withdrawalsCol, paymentsCol, escrowsCol, walletsCol, reviewsCol, invitesCol, stockCol, verificationsCol, cryptoAddressesCol, memory = null;
+let mongoClient, usersCol, statesCol, conversationsCol, messagesCol, listingsCol, sellerProfilesCol, withdrawalsCol, paymentsCol, escrowsCol, walletsCol, reviewsCol, invitesCol, stockCol, verificationsCol, cryptoAddressesCol, favoritesCol, memory = null;
 // Whether the connected Mongo can run multi-document transactions (a replica
 // set — Atlas always is; a bare `docker run mongo` standalone is not).
 // Detected once at boot; money-path stores fall back to their pre-transaction
@@ -469,7 +469,7 @@ async function connectDb() {
     if (!allowMemoryStore()) {
       throw new Error('MONGODB_URI is not set and the in-memory store is disabled in this environment. Set MONGODB_URI, or ALLOW_MEMORY_STORE=true for local dev.');
     }
-    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map(), cryptoAddresses: new Map() };
+    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map(), cryptoAddresses: new Map(), favorites: new Map() };
     console.log('⚠  MONGODB_URI not set — running on in-memory store (data lost on restart).');
     console.log('   Create .env with MONGODB_URI=mongodb://127.0.0.1:27017/dotmarket (local) or mongodb+srv://... (Atlas).');
     return;
@@ -500,6 +500,7 @@ async function connectDb() {
     stockCol = db.collection('stock');
     verificationsCol = db.collection('email_verifications');
     cryptoAddressesCol = db.collection('crypto_addresses');
+    favoritesCol = db.collection('favorites');
     mongoClient = client;
     // The driver reconnects on its own and existing operations already
     // retry (retryWrites/retryReads in the URI) — this is purely visibility:
@@ -546,7 +547,7 @@ async function connectDb() {
     if (!allowMemoryStore()) {
       throw new Error('MongoDB connection failed and the in-memory fallback is disabled in this environment. Refusing to start with ephemeral money state.');
     }
-    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map(), cryptoAddresses: new Map() };
+    memory = { users: new Map(), states: new Map(), conversations: new Map(), messages: new Map(), listings: new Map(), sellerProfiles: new Map(), withdrawals: new Map(), payments: new Map(), escrows: new Map(), wallets: new Map(), reviews: new Map(), invites: new Map(), stock: new Map(), verifications: new Map(), cryptoAddresses: new Map(), favorites: new Map() };
     console.error('   Falling back to in-memory store (local/dev only — data lost on restart).');
   }
 }
@@ -586,6 +587,7 @@ const { createStockStore } = require('./lib/stock-store');
 const { registerStockRoutes } = require('./lib/stock-routes');
 const { createVerificationStore } = require('./lib/verification-store');
 const { createCryptoAddressStore } = require('./lib/crypto-address-store');
+const { createFavoriteStore } = require('./lib/favorite-store');
 const { autoDeliver } = require('./lib/stock-deliver');
 const mailer = require('./lib/mailer');
 const templates = require('./lib/email-templates');
@@ -600,6 +602,7 @@ let inviteStore;
 let stockStore;
 let verificationStore;
 let cryptoAddressStore;
+let favoriteStore;
 
 async function sellerProfileFor(user) {
   if (!user?.isSeller) return null;
@@ -994,6 +997,45 @@ app.delete('/api/state', async (req, res) => {
   }
 });
 
+app.get('/api/favorites', async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+    const ids = await favoriteStore.getIds(user._id);
+    res.json({ ids });
+  } catch (err) {
+    console.error('get favorites error:', err.message);
+    res.status(500).json({ error: 'server' });
+  }
+});
+
+app.post('/api/favorites/:id', writeLimiter, async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+    const id = String(req.params.id || '').slice(0, 100);
+    if (!id) return res.status(400).json({ error: 'bad id' });
+    const ids = await favoriteStore.addFavorite(user._id, id);
+    res.json({ ok: true, ids });
+  } catch (err) {
+    console.error('add favorite error:', err.message);
+    res.status(500).json({ error: 'server' });
+  }
+});
+
+app.delete('/api/favorites/:id', writeLimiter, async (req, res) => {
+  try {
+    const user = await authUser(req);
+    if (!user) return res.status(401).json({ error: 'unauthorized' });
+    const id = String(req.params.id || '').slice(0, 100);
+    const ids = await favoriteStore.removeFavorite(user._id, id);
+    res.json({ ok: true, ids });
+  } catch (err) {
+    console.error('remove favorite error:', err.message);
+    res.status(500).json({ error: 'server' });
+  }
+});
+
 /* ---------- messaging: buyer ↔ seller ---------- */
 app.get('/api/conversations', async (req, res) => {
   try {
@@ -1316,6 +1358,7 @@ connectDb().then(async () => {
   walletStore = createWalletStore({ memory, walletsCol });
   inviteStore = createInviteStore({ memory, invitesCol });
   stockStore = createStockStore({ memory, stockCol });
+  favoriteStore = createFavoriteStore({ memory, favoritesCol });
   verificationStore = createVerificationStore({ memory, verificationsCol });
   cryptoAddressStore = createCryptoAddressStore({ memory, cryptoAddressesCol });
   payments.configureNativeProviders({ cryptoAddressStore });
