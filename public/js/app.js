@@ -549,7 +549,12 @@ function openListing(id) {
   // options) — default to the first/cheapest option until the buyer picks one.
   let selected = hasVariants ? l.variants[0] : null;
   lastFocus = document.activeElement;
-  const hasImg = !!l.image;
+  // `images` is always populated server-side (falls back to the single
+  // `image` for a listing saved before galleries existed) — see
+  // serializeListing() — but guard anyway in case a cached/local copy
+  // predates that.
+  const images = l.images?.length ? l.images : (l.image ? [l.image] : []);
+  const hasImg = images.length > 0;
 
   function priceBlockHtml() {
     const price = selected ? selected.price : l.price;
@@ -596,7 +601,11 @@ function openListing(id) {
     <div class="sheet-grid">
       <div class="sheet-media thumb-cat-${l.cat}${hasImg ? ' has-img' : ''}">
         <span class="cat-tag">${(CATS.find(c => c.id === l.cat) || { label: l.cat || 'Other' }).label}</span>
-        ${hasImg ? `<img class="thumb-img" src="${esc(l.image)}" alt="${esc(l.title)}" loading="lazy">` : `<span class="tile">${ICONS[l.cat] || ''}</span>`}
+        ${hasImg ? `<img class="thumb-img" id="sheetMainImg" src="${esc(images[0])}" alt="${esc(l.title)}" loading="lazy">` : `<span class="tile">${ICONS[l.cat] || ''}</span>`}
+        ${images.length > 1 ? `
+        <div class="sheet-thumbs" role="tablist" aria-label="Product photos">
+          ${images.map((src, i) => `<button type="button" class="sheet-thumb ${i === 0 ? 'on' : ''}" data-thumb="${i}" role="tab" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt="" loading="lazy"></button>`).join('')}
+        </div>` : ''}
       </div>
       <div class="sheet-info">
         <h3>${esc(l.title)}</h3>
@@ -619,6 +628,13 @@ function openListing(id) {
     </div>
   </div>`;
   bindVariantPicker();
+  sheet.querySelectorAll('[data-thumb]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const img = $('#sheetMainImg');
+      if (img) img.src = images[Number(btn.dataset.thumb)];
+      sheet.querySelectorAll('[data-thumb]').forEach(b => b.classList.toggle('on', b === btn));
+    });
+  });
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   sheet.querySelector('[data-close]').focus();
