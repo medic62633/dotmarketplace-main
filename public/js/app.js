@@ -297,7 +297,6 @@ function renderHero() {
         <p>Every payment locks in escrow until you confirm delivery. Sellers get paid on proof, not promises — and a dispute freezes the funds, never your patience.</p>
         <div class="hero-ctas">
           ${cta}
-          <a class="hero-btn-ghost" href="/seller/">Start selling</a>
         </div>
         <div class="hero-stats">
           <div class="hero-stat"><b>312</b><span>deals this week</span></div>
@@ -2601,7 +2600,11 @@ function renderChatList() {
     const latestPreview = latest ? chatMsgPreview(latest) : (g.latest.lastPreview || 'Say hello to start the chat');
     const expanded = chatGroupExpanded(g.who, groups);
     const single = g.threads.length === 1;
-    const threadRows = expanded ? g.threads.map(c => {
+    // A single-thread peer's head row already opens that thread directly
+    // (data-chat on the row itself, no chevron) — rendering the expanded
+    // per-thread list underneath it too is a redundant duplicate, not a
+    // second real thread.
+    const threadRows = (!single && expanded) ? g.threads.map(c => {
       const last = c.msgs?.[c.msgs.length - 1];
       const preview = last ? chatMsgPreview(last) : (c.lastPreview || 'Say hello to start the chat');
       const label = c.dealId ? `${esc(c.title || c.dealId)} · ${esc(c.dealId)}` : 'Direct message';
@@ -2649,7 +2652,11 @@ function renderThread() {
       <span class="pill ${(DEALMETA[deal.status] || { cls: 'wait' }).cls}">${(DEALMETA[deal.status] || { lbl: deal.status }).lbl}</span>
       <span class="t">${esc(deal.title)}</span>
       <span class="a mono">${fmt(deal.amt)} USDT</span>
-    </div>` : ''}
+    </div>` : (c.title ? `
+    <div class="chat-deal">
+      <span class="pill wait">Inquiry</span>
+      <span class="t">${esc(c.title)}</span>
+    </div>` : '')}
     <div class="chat-msgs" id="chatMsgs">
       ${(c.msgs || []).map(chatMsgBubble).join('')}
     </div>
@@ -2840,6 +2847,7 @@ function openAuth(mode, after) {
   pendingVerifyEmail = null;
   $('#verifyForm').hidden = true;
   $('#authForm').hidden = false;
+  $('.auth-x').style.display = '';
   $('#authOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
   setTimeout(() => $(mode === 'up' ? '#authName' : '#authEmail').focus(), 250);
@@ -2923,16 +2931,18 @@ function submitAuth() {
   }, 750);
 }
 
-/* Swap the auth form for the 6-digit verification-code step. The user is
- * already signed in (soft enforcement) — verifying just confirms the email. */
+/* Swap the auth form for the 6-digit verification-code step. Compulsory for
+ * a new signup — no skip, and the modal can't be dismissed (X, backdrop
+ * click, or Escape) until the code is verified, see the guards below. */
 function showVerifyStep(email, devCode) {
   pendingVerifyEmail = email;
   $('#authForm').hidden = true;
   $('#verifyForm').hidden = false;
+  $('.auth-x').style.display = 'none';
   $('#authTitle').textContent = 'Verify your email';
   $('#authSub').textContent = devCode
     ? `Dev mode (no SMTP): your code is ${devCode}`
-    : `We emailed a 6-digit code to ${email}. Enter it below — it expires in 10 minutes.`;
+    : `We emailed a 6-digit code to ${email}. Enter it below to finish creating your account — it expires in 10 minutes.`;
   $('#verifyCode').value = '';
   setTimeout(() => $('#verifyCode').focus(), 150);
 }
@@ -2941,6 +2951,7 @@ function closeVerifyStep() {
   pendingVerifyEmail = null;
   $('#verifyForm').hidden = true;
   $('#authForm').hidden = false;
+  $('.auth-x').style.display = '';
   $('#authOverlay').classList.remove('open');
   document.body.style.overflow = '';
 }
@@ -3000,18 +3011,13 @@ async function resendVerifyCode(e) {
 
 $('#verifyForm').addEventListener('submit', submitVerify);
 $('#verifyResend').addEventListener('click', resendVerifyCode);
-$('#verifySkip').addEventListener('click', e => {
-  e.preventDefault();
-  closeVerifyStep();
-  toast('You can verify later — your account is ready', 'info');
-  const cb = afterAuth; afterAuth = null;
-  if (cb) setTimeout(cb, 450);
-});
 
 document.addEventListener('click', e => {
   const ab = e.target.closest('[data-auth]');
   if (ab) openAuth(ab.dataset.auth);
-  if (e.target.closest('[data-ax]') || e.target === $('#authOverlay')) closeAuth();
+  // Verifying a new signup is compulsory — the X button and clicking the
+  // backdrop must not dismiss the modal while a code is pending.
+  if (!pendingVerifyEmail && (e.target.closest('[data-ax]') || e.target === $('#authOverlay'))) closeAuth();
   const m = $('#avaMenu');
   if (!m.hidden && !e.target.closest('#avaMenu') && !e.target.closest('#avaBtn')) m.hidden = true;
   const am = e.target.closest('[data-am]');
@@ -3053,7 +3059,7 @@ $('#pwToggle').addEventListener('click', () => {
   const i = $('#authPass');
   i.type = i.type === 'password' ? 'text' : 'password';
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#authOverlay').classList.contains('open')) closeAuth(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pendingVerifyEmail && $('#authOverlay').classList.contains('open')) closeAuth(); });
 
 /* deal-of-the-day shortcut */
 document.addEventListener('click', e => {
