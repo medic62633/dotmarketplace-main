@@ -24,16 +24,35 @@ const http = require('node:http');
 const { startServer } = require('./helpers/server');
 const { adminToken, verifiedSeller, listing } = require('./helpers/fixtures');
 
-/* Fake TronGrid: always reports one qualifying USDT-TRC20 transfer of
- * exactly `microUnits` (raw integer, 6 decimals) into whatever address is
- * asked about — matches native-tron.js's expected response shape. */
+/* Fake TronGrid: reports one qualifying USDT-TRC20 transfer of exactly
+ * `microUnits` (raw integer, 6 decimals) into whatever address is asked
+ * about — matches native-tron.js's expected response shape.
+ *
+ * The address has no history when the invoice is created (so the watermark
+ * native-tron.js records is 0) and the transfer appears afterwards, dated
+ * later than that watermark — which is what makes it count as payment for
+ * THIS order rather than a leftover from whatever the pooled address did
+ * before. `block_timestamp` is not optional: a transfer without one can't be
+ * placed relative to the invoice and is ignored by design. */
 function startFakeTronGrid(microUnits) {
+  let firstRequestDone = false;
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
+      // The very first read is createInvoice capturing the watermark: the
+      // address is still empty at that point.
+      const body = firstRequestDone
+        ? {
+          data: [{
+            value: String(microUnits),
+            block_timestamp: Date.now(),
+            transaction_id: 'fake-tx-1',
+            from: 'TFakeSenderAddress00000000000000',
+          }],
+        }
+        : { data: [] };
+      firstRequestDone = true;
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        data: [{ value: String(microUnits), transaction_id: 'fake-tx-1', from: 'TFakeSenderAddress00000000000000' }],
-      }));
+      res.end(JSON.stringify(body));
     });
     server.listen(0, '127.0.0.1', () => resolve(server));
   });

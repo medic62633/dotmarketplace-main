@@ -15,6 +15,39 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startServer } = require('./helpers/server');
 const { adminToken, verifiedSeller, listing } = require('./helpers/fixtures');
+const { startFakeTron, startFakeEvm, startFakeSolana, startFakeEsplora } = require('./helpers/fake-chains');
+
+/* The local chain stand-in each provider needs, plus the env that points it
+ * there. Empty state throughout: these tests are about pool mechanics and
+ * amount conversion, so the chain just has to answer the baseline read
+ * truthfully (nothing received yet), not simulate a payment. */
+async function startChainFor(provider) {
+  if (provider === 'native_tron') {
+    const c = await startFakeTron();
+    return { ...c, env: { NATIVE_TRON_API_BASE: c.baseUrl } };
+  }
+  if (provider === 'native_eth') {
+    const c = await startFakeEvm();
+    return { ...c, env: { NATIVE_ETH_RPC_URL: c.baseUrl } };
+  }
+  if (provider === 'native_bsc') {
+    const c = await startFakeEvm();
+    return { ...c, env: { NATIVE_BSC_RPC_URL: c.baseUrl } };
+  }
+  if (provider === 'native_sol' || provider === 'native_sol_usdt') {
+    const c = await startFakeSolana();
+    return { ...c, env: { NATIVE_SOL_RPC_URL: c.baseUrl } };
+  }
+  if (provider === 'native_btc') {
+    const c = await startFakeEsplora();
+    return { ...c, env: { NATIVE_BTC_API_BASE: c.baseUrl } };
+  }
+  if (provider === 'native_ltc') {
+    const c = await startFakeEsplora();
+    return { ...c, env: { NATIVE_LTC_API_BASE: c.baseUrl } };
+  }
+  throw new Error('no chain stand-in for ' + provider);
+}
 
 function fakeAddress(prefix, n) {
   const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -44,7 +77,14 @@ for (const { provider, network, addrPrefix, decimals, usdRate } of NETWORKS) {
   test(`${provider}: admin can pool addresses, wallet top-up claims one per order, and the pool exhausts loudly`, async (t) => {
     const symbol = provider.replace('native_', '').toUpperCase();
     const envOverride = usdRate ? { [`NATIVE_${symbol}_USD_RATE`]: String(usdRate) } : {};
-    const srv = await startServer({ PAYMENT_PROVIDER: provider, ...envOverride });
+    // Every provider now reads real chain state at invoice creation to record
+    // the baseline that scopes detection to this order, and refuses to invent
+    // one when that read fails (a zero baseline would make a recycled
+    // address's existing balance count as payment). So a chain has to answer
+    // — point each provider at its local stand-in.
+    const chain = await startChainFor(provider);
+    t.after(() => chain.close());
+    const srv = await startServer({ PAYMENT_PROVIDER: provider, ...chain.env, ...envOverride });
     t.after(() => srv.stop());
     const { api } = srv;
 
@@ -130,7 +170,13 @@ test('adding addresses to an unsupported network is rejected', async (t) => {
 });
 
 test('escrow checkout on a non-USD-pegged native chain also converts the listing price (not just wallet top-up)', async (t) => {
-  const srv = await startServer({ PAYMENT_PROVIDER: 'native_btc', NATIVE_BTC_USD_RATE: '65000' });
+  const chain = await startFakeEsplora();
+  t.after(() => chain.close());
+  const srv = await startServer({
+    PAYMENT_PROVIDER: 'native_btc',
+    NATIVE_BTC_USD_RATE: '65000',
+    NATIVE_BTC_API_BASE: chain.baseUrl,
+  });
   t.after(() => srv.stop());
   const { api } = srv;
 
