@@ -1,6 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Dot Marketplace</title>
+<meta name="description" content="Buy and sell digital goods with every trade protected by escrow — funds only release once the buyer confirms delivery.">
+<meta name="theme-color" content="#0c0a13">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Dot Marketplace">
+<meta property="og:description" content="Buy and sell digital goods with every trade protected by escrow — funds only release once the buyer confirms delivery.">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="/js/theme-boot.js"></script>
 <link rel="stylesheet" href="/css/fonts.css">
@@ -302,6 +310,18 @@ body::after {
 .card:hover::after { opacity: 1; }
 @keyframes card-in { from { opacity: 0; transform: translateY(16px) scale(.97); } }
 .card:hover { --ty: -4px; border-color: var(--accent-line); box-shadow: var(--shadow-sm); }
+.card-wrap { position: relative; }
+.card-fav {
+  position: absolute; top: 10px; right: 10px; z-index: 4;
+  width: 32px; height: 32px; border-radius: 999px; padding: 0;
+  display: grid; place-items: center;
+  background: rgba(10,11,15,.5); border: 1px solid rgba(255,255,255,.14); color: #fff;
+  backdrop-filter: blur(4px); cursor: pointer;
+  transition: background .15s ease, transform .15s ease, color .15s ease;
+}
+.card-fav:hover { background: rgba(10,11,15,.72); transform: scale(1.06); }
+.card-fav.on { color: var(--danger); }
+.card-fav.on svg { fill: currentColor; }
 .thumb {
   position: relative; aspect-ratio: 16 / 9.6;
   display: grid; place-items: center; overflow: hidden;
@@ -1425,6 +1445,16 @@ html { scrollbar-color: var(--surface-3) transparent; }
   background: rgba(10,11,15,.5); color: #fff;
   backdrop-filter: blur(6px); display: grid; place-items: center;
 }
+.sheet-fav {
+  position: absolute; top: 14px; right: 58px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 999px; padding: 0;
+  background: rgba(10,11,15,.5); color: #fff; border: none;
+  backdrop-filter: blur(6px); display: grid; place-items: center; cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.sheet-fav:hover { background: rgba(10,11,15,.72); }
+.sheet-fav.on { color: var(--danger); }
+.sheet-fav.on svg { fill: currentColor; }
 .sheet-info { padding: 24px; border-left: 1px solid var(--line); }
 @media (max-width: 720px) {
   .sheet-grid { grid-template-columns: 1fr; }
@@ -1515,7 +1545,11 @@ html { scrollbar-color: var(--surface-3) transparent; }
   .wallet { padding: 6px 7px 6px 11px; }
   .wallet .amt { font-size: 12.5px; }
   .iconbtn, .avatar { width: 34px; height: 34px; }
-  .filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  /* contain:layout stops this row's horizontally-scrolling overflow (by
+   * design, once there are enough filter controls to not fit) from leaking
+   * into the CSS Grid ancestor's track sizing and widening the whole mobile
+   * layout viewport — reproduced by adding any extra control to this row. */
+  .filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; contain: layout; }
   .filters::-webkit-scrollbar { display: none; }
   .filters > * { flex: none; }
   .filters .reset { margin-left: auto; }
@@ -1627,6 +1661,11 @@ html { scrollbar-color: var(--surface-3) transparent; }
           <input type="checkbox" id="vfy">
           <span class="tk" aria-hidden="true"></span>
           <span class="tl">Verified sellers only</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="saved">
+          <span class="tk" aria-hidden="true"></span>
+          <span class="tl">Saved only</span>
         </label>
         <button class="reset" id="reset">Reset</button>
       </div>
@@ -2017,4 +2056,6 @@ html { scrollbar-color: var(--surface-3) transparent; }
 <div class="toasts" id="toasts"></div>
 
 <script src="/js/app.js"></script>
+</body>
+</html>
 
