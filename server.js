@@ -560,6 +560,26 @@ const store = {
     if (memory) memory.users.set(user._id, user);
     else await usersCol.replaceOne({ _id: user._id }, user, { upsert: true });
   },
+  /* Create a user only if the address is free. Signup used to check with
+   * getUser and then putUser (an upsert), so two concurrent signups for the
+   * same address both passed the check and the second silently REPLACED the
+   * first account — new password, new token, same email. The _id is the
+   * address, so an insert is the atomic form of that check.
+   * Returns true when this call created the account. */
+  async createUserIfAbsent(user) {
+    if (memory) {
+      if (memory.users.has(user._id)) return false;
+      memory.users.set(user._id, user);
+      return true;
+    }
+    try {
+      await usersCol.insertOne(user);
+      return true;
+    } catch (err) {
+      if (err && err.code === 11000) return false; // someone won the race
+      throw err;
+    }
+  },
   async getState(email) {
     if (memory) return memory.states.get(email) || null;
     const doc = await statesCol.findOne({ _id: email });
@@ -726,14 +746,20 @@ async function saveConversation(conv) {
   await conversationsCol.replaceOne({ _id: conv._id }, conv, { upsert: true });
 }
 
+/* Threads this person has removed from their own inbox stay out of it (see
+ * DELETE /api/conversations/:id — a delete is per-participant now, so the
+ * other side keeps the record). A new message un-hides it again. */
 async function listConversationsFor(email) {
-  const filter = { participants: email };
   if (memory) {
     return [...memory.conversations.values()]
-      .filter(c => c.participants.includes(email))
+      .filter(c => c.participants.includes(email) && !(c.hiddenFor || []).includes(email))
       .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
   }
-  return conversationsCol.find(filter).sort({ lastMessageAt: -1 }).limit(100).toArray();
+  return conversationsCol
+    .find({ participants: email, hiddenFor: { $ne: email } })
+    .sort({ lastMessageAt: -1 })
+    .limit(100)
+    .toArray();
 }
 
 async function getMessages(conversationId, since) {
@@ -830,10 +856,14 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'email', msg: 'Enter a valid email address' });
     if (!password || password.length < 8) return res.status(400).json({ error: 'password', msg: 'At least 8 characters' });
     const id = email.toLowerCase();
-    if (await store.getUser(id)) return res.status(409).json({ error: 'email', msg: 'Account exists — sign in instead' });
     const salt = crypto.randomBytes(16).toString('hex');
     const user = { _id: id, name: name.trim(), passHash: hash(password, salt), salt, token: newToken(), tokenIssuedAt: new Date(), createdAt: new Date() };
-    await store.putUser(user);
+    // Atomic create — see store.createUserIfAbsent. A check-then-upsert let
+    // two concurrent signups for the same address both succeed, with the
+    // second replacing the first account outright.
+    if (!await store.createUserIfAbsent(user)) {
+      return res.status(409).json({ error: 'email', msg: 'Account exists — sign in instead' });
+    }
     const seller = await sellerProfileFor(user);
     // Issue a 6-digit verification code and email it. Soft enforcement: the
     // account is signed in immediately; verifying just sets the verified flag.
@@ -1069,6 +1099,19 @@ app.post('/api/conversations', writeLimiter, async (req, res) => {
       return res.status(404).json({ error: 'seller', msg: 'Seller account not found' });
     }
 
+    // The target has to actually be a seller. ensureSellerUser returns any
+    // EXISTING account for the address it's handed, so without this check any
+    // signed-in user could open a thread with any other user whose email they
+    // knew — a plain buyer included — and start messaging them. Buyers contact
+    // sellers about listings; that is the only thread this endpoint creates.
+    // (Deal threads between an existing buyer/seller pair are unaffected: the
+    // seller on a deal is a seller by definition.)
+    const targetIsSeller = !!sellerUser.isSeller
+      || !!(sellerStore && await sellerStore.getSellerProfile(sellerUser._id));
+    if (!targetIsSeller && sellerUser._id !== user._id) {
+      return res.status(404).json({ error: 'seller', msg: 'Seller account not found' });
+    }
+
     const buyerEmail = user._id;
     const id = conversationId({ dealId: dealId || null, buyerEmail, sellerEmail, sellerName: seller });
     let conv = await getConversation(id);
@@ -1165,6 +1208,10 @@ app.post('/api/conversations/:id/messages', writeLimiter, async (req, res) => {
     conv.lastMessageAt = msg.createdAt;
     if (user._id === conv.buyerEmail) conv.sellerUnread = (conv.sellerUnread || 0) + 1;
     else conv.buyerUnread = (conv.buyerUnread || 0) + 1;
+    // A new message brings the thread back for anyone who had removed it from
+    // their inbox — otherwise the counterparty carries on talking into a
+    // thread the recipient can no longer see.
+    conv.hiddenFor = [];
     await saveConversation(conv);
 
     res.json({ message: serializeMessage(msg, user._id) });
@@ -1228,9 +1275,32 @@ app.post('/api/conversations/:id/read', async (req, res) => {
   }
 });
 
-/* Delete a conversation the caller participates in. Also removes its messages
- * and the chat image files they referenced — otherwise orphaned uploads would
- * live forever (and keep counting against a quota nobody can see). */
+/* Remove a conversation from the CALLER's inbox.
+ *
+ * This used to destroy the thread, every message in it, and the uploaded
+ * images — for both sides, with no check on the deal's state. A deal chat is
+ * the shared record an arbiter reads when a dispute is opened (the app's own
+ * copy tells users exactly that), so either party could erase the evidence
+ * the other was relying on, and a scammer had every reason to.
+ *
+ * So a delete now hides the thread for the person asking. The messages are
+ * only actually purged once BOTH participants have hidden it and no escrow on
+ * the deal is still live — at which point nobody is relying on it and the
+ * uploads would otherwise sit on disk forever, counting against a quota
+ * nobody can see. */
+const LIVE_ESCROW_STATES = ['held', 'delivered', 'dispute'];
+
+async function dealEscrowIsLive(conv) {
+  if (!conv?.dealId || !sellerStore) return false;
+  try {
+    const escrow = await sellerStore.getEscrow(conv.dealId);
+    return !!escrow && LIVE_ESCROW_STATES.includes(escrow.status);
+  } catch (_) {
+    // Can't tell — assume it matters. Failing closed here keeps evidence.
+    return true;
+  }
+}
+
 app.delete('/api/conversations/:id', writeLimiter, async (req, res) => {
   try {
     const user = await authUser(req);
@@ -1239,18 +1309,31 @@ app.delete('/api/conversations/:id', writeLimiter, async (req, res) => {
     if (!conv || !conv.participants.includes(user._id)) {
       return res.status(404).json({ error: 'not found' });
     }
-    const msgs = await getMessages(conv._id);
-    for (const m of msgs) {
-      if (m.image) deleteChatImage(m.image);
+
+    const hiddenFor = Array.isArray(conv.hiddenFor) ? conv.hiddenFor : [];
+    if (!hiddenFor.includes(user._id)) hiddenFor.push(user._id);
+    conv.hiddenFor = hiddenFor;
+
+    const bothHidden = conv.participants.every(p => hiddenFor.includes(p));
+    const live = await dealEscrowIsLive(conv);
+
+    if (bothHidden && !live) {
+      const msgs = await getMessages(conv._id);
+      for (const m of msgs) {
+        if (m.image) deleteChatImage(m.image);
+      }
+      if (memory) {
+        memory.messages.delete(conv._id);
+        memory.conversations.delete(conv._id);
+      } else {
+        await messagesCol.deleteMany({ conversationId: conv._id });
+        await conversationsCol.deleteOne({ _id: conv._id });
+      }
+      return res.json({ ok: true, purged: true });
     }
-    if (memory) {
-      memory.messages.delete(conv._id);
-      memory.conversations.delete(conv._id);
-    } else {
-      await messagesCol.deleteMany({ conversationId: conv._id });
-      await conversationsCol.deleteOne({ _id: conv._id });
-    }
-    res.json({ ok: true });
+
+    await saveConversation(conv);
+    res.json({ ok: true, purged: false });
   } catch (err) {
     console.error('delete conversation error:', err.message);
     res.status(500).json({ error: 'server' });
@@ -1338,10 +1421,11 @@ app.post('/api/seller-invite/claim', authLimiter, async (req, res) => {
     await store.putUser(user);
 
     // Provision the seller profile as verified (invite-only = admin-verified).
-    const profile = await sellerStore.ensureSellerProfile(email, displayName);
-    profile.verified = true;
-    profile.verifiedAt = profile.verifiedAt || new Date();
-    await sellerStore.saveSellerProfile(profile);
+    const existingProfile = await sellerStore.ensureSellerProfile(email, displayName);
+    const profile = await sellerStore.updateSellerProfileFields(email, {
+      verified: true,
+      verifiedAt: existingProfile.verifiedAt || new Date(),
+    }) || existingProfile;
 
     const seller = sellerStore.serializeSellerProfile(profile);
     res.json({ token: user.token, user: userPayload(user, seller) });
