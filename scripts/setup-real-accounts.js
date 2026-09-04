@@ -6,13 +6,19 @@
  * Keeps:  demo400@test.com (buyer), the new seller, the new admin.
  * Removes: all other users, plus their states, wallets, and seller_profiles.
  *
- * Usage: node scripts/setup-real-accounts.js
+ * Usage: node scripts/setup-real-accounts.js <password>
+ *        SETUP_ACCOUNTS_PASSWORD=... node scripts/setup-real-accounts.js
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const crypto = require('crypto');
 const { MongoClient } = require('mongodb');
 
-const PASSWORD = 'Rajiv098@#';
+const PASSWORD = process.argv[2] || process.env.SETUP_ACCOUNTS_PASSWORD;
+if (!PASSWORD) {
+  console.error('Usage: node scripts/setup-real-accounts.js <password>');
+  console.error('  (or set SETUP_ACCOUNTS_PASSWORD in the environment)');
+  process.exit(1);
+}
 
 const SELLER = { email: 'rockstar@gmail.com', name: 'rockstar' };
 const ADMIN = { email: 'godforever@gmail.com', name: 'Admin' };
