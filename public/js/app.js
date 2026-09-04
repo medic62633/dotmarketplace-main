@@ -549,7 +549,12 @@ function openListing(id) {
   // options) — default to the first/cheapest option until the buyer picks one.
   let selected = hasVariants ? l.variants[0] : null;
   lastFocus = document.activeElement;
-  const hasImg = !!l.image;
+  // `images` is always populated server-side (falls back to the single
+  // `image` for a listing saved before galleries existed) — see
+  // serializeListing() — but guard anyway in case a cached/local copy
+  // predates that.
+  const images = l.images?.length ? l.images : (l.image ? [l.image] : []);
+  const hasImg = images.length > 0;
 
   function priceBlockHtml() {
     const price = selected ? selected.price : l.price;
@@ -596,7 +601,11 @@ function openListing(id) {
     <div class="sheet-grid">
       <div class="sheet-media thumb-cat-${l.cat}${hasImg ? ' has-img' : ''}">
         <span class="cat-tag">${(CATS.find(c => c.id === l.cat) || { label: l.cat || 'Other' }).label}</span>
-        ${hasImg ? `<img class="thumb-img" src="${esc(l.image)}" alt="${esc(l.title)}" loading="lazy">` : `<span class="tile">${ICONS[l.cat] || ''}</span>`}
+        ${hasImg ? `<img class="thumb-img" id="sheetMainImg" src="${esc(images[0])}" alt="${esc(l.title)}" loading="lazy">` : `<span class="tile">${ICONS[l.cat] || ''}</span>`}
+        ${images.length > 1 ? `
+        <div class="sheet-thumbs" role="tablist" aria-label="Product photos">
+          ${images.map((src, i) => `<button type="button" class="sheet-thumb ${i === 0 ? 'on' : ''}" data-thumb="${i}" role="tab" aria-label="Photo ${i + 1}"><img src="${esc(src)}" alt="" loading="lazy"></button>`).join('')}
+        </div>` : ''}
       </div>
       <div class="sheet-info">
         <h3>${esc(l.title)}</h3>
@@ -619,6 +628,13 @@ function openListing(id) {
     </div>
   </div>`;
   bindVariantPicker();
+  sheet.querySelectorAll('[data-thumb]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const img = $('#sheetMainImg');
+      if (img) img.src = images[Number(btn.dataset.thumb)];
+      sheet.querySelectorAll('[data-thumb]').forEach(b => b.classList.toggle('on', b === btn));
+    });
+  });
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   sheet.querySelector('[data-close]').focus();
@@ -1619,22 +1635,36 @@ async function openCredential(deal) {
 }
 
 /* ================= router ================= */
-const VIEWS = ['market', 'forum', 'community', 'escrow', 'deals', 'messages', 'wallet', 'seller'];
+const VIEWS = ['market', 'forum', 'community', 'escrow', 'deals', 'messages', 'wallet', 'seller', 'legal'];
 
 function parseHashView() {
   const h = (location.hash || '').slice(1);
   if (h.startsWith('seller/')) {
     return { view: 'seller', sellerId: decodeURIComponent(h.slice(7)).trim().toLowerCase() };
   }
+  if (h.startsWith('legal/')) {
+    return { view: 'legal', doc: decodeURIComponent(h.slice(6)).trim().toLowerCase() };
+  }
   return { view: VIEWS.includes(h) ? h : 'market' };
 }
 
 function go(view, opts = {}) {
+  // Switching top-level views (nav click, a hash change, browser back/
+  // forward) must never leave a transient overlay floating on top of
+  // whatever loads underneath it — the listing sheet, checkout, and the
+  // receipt were only ever being closed by their own explicit close
+  // buttons, not by navigating away some other way.
+  closeListing();
+  closePaymentModal();
+  closeReceipt();
   if (view === 'seller') {
     S.sellerId = opts.sellerId || S.sellerId;
     if (S.sellerId) {
       try { history.replaceState(null, '', '#seller/' + encodeURIComponent(S.sellerId)); } catch (e) {}
     }
+  } else if (view === 'legal') {
+    S.legalDoc = opts.doc && LEGAL_DOCS[opts.doc] ? opts.doc : (S.legalDoc || 'terms');
+    try { history.replaceState(null, '', '#legal/' + S.legalDoc); } catch (e) {}
   } else if (!opts.keepHash && VIEWS.includes(view)) {
     try { history.replaceState(null, '', '#' + view); } catch (e) {}
   }
@@ -1648,7 +1678,72 @@ function go(view, opts = {}) {
   if (view === 'wallet') countWallet();
   if (view === 'wallet') { paintBal(); paintLocked(); renderTxs(); refreshWalletBalance(); }
   if (view === 'seller') loadSellerProfile(S.sellerId);
+  if (view === 'legal') renderLegalDoc();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ================= legal pages =================
+ * Real content grounded in how this app actually works (escrow mechanics,
+ * fee structure, invite-only sellers, crypto-only payments) — not generic
+ * boilerplate, so it never contradicts the product itself. */
+const LEGAL_DOCS = {
+  terms: {
+    title: 'Terms of Service',
+    sub: 'How Dot Marketplace works, in plain terms',
+    html: `
+      <p>By using Dot Marketplace you agree to the following. This is a summary of how the platform actually behaves, not boilerplate — read the specifics that matter to a trade before you rely on them.</p>
+      <h3>Accounts</h3>
+      <p>You must be at least 18 years old and provide a real, working email address. Seller accounts are provisioned by an administrator through a one-time invite — there is no public seller signup. Impersonating another person, or creating multiple accounts to evade a suspension, is grounds for termination.</p>
+      <h3>Escrow &amp; delivery</h3>
+      <p>Every payment is held in escrow, not sent to the seller. The seller delivers inside the deal chat; you then either confirm delivery (releasing the funds) or open a dispute if something is wrong. An administrator arbitrates disputes by reviewing the deal chat and any proof submitted — their decision is final.</p>
+      <h3>Fees</h3>
+      <p>A platform fee (shown at checkout, currently 2.5% of the deal) is deducted from the seller's payout only when a deal completes. A cancelled or refunded deal is never charged a fee.</p>
+      <h3>Payments</h3>
+      <p>Deposits and purchases are funded by direct on-chain cryptocurrency transfers to the operator's own wallet — there is no card processor and no chargeback mechanism. A transfer sent to the wrong address, the wrong network, or for the wrong amount cannot be recovered by Dot Marketplace once it confirms on-chain. Double-check the address, network, and amount shown before you send.</p>
+      <h3>Prohibited use</h3>
+      <p>You may not list or trade stolen goods, credentials obtained through compromise or fraud, or anything illegal in the jurisdiction you operate from. Listings and accounts found to violate this are removed, and funds already in escrow for such a deal are held pending investigation rather than released.</p>
+      <h3>No warranty</h3>
+      <p>Digital goods are provided by independent sellers, not by Dot Marketplace. Escrow protects the payment, not the quality of a working-as-described item beyond what you can verify during the inspection window before confirming delivery.</p>`,
+  },
+  privacy: {
+    title: 'Privacy Policy',
+    sub: 'What we collect, why, and what we don’t',
+    html: `
+      <h3>What we collect</h3>
+      <p>Your email address and display name, your transaction and order history, your wallet balance and ledger, and the messages you send in deal chats — the last of these is kept as evidence in case a deal is ever disputed. We also log request metadata (IP address, timestamps) for rate-limiting and abuse prevention.</p>
+      <h3>What we don't collect</h3>
+      <p>No payment card data — every payment is a direct on-chain crypto transfer, so we never see or store card numbers. We don't run third-party analytics or ad-tracking scripts; the site's Content-Security-Policy blocks any script or request that isn't served by Dot Marketplace itself.</p>
+      <h3>How it's used</h3>
+      <p>To operate your account, hold and release escrow correctly, send you transactional email (a verification code at signup, a sale or payment confirmation, a delivered credential), and to investigate a dispute if one is opened on a deal you're party to.</p>
+      <h3>Who else sees it</h3>
+      <p>Only your outbound transactional email passes through a third party — the SMTP provider configured by the site operator, solely to deliver that email. Nothing is sold or shared for marketing.</p>
+      <h3>Security</h3>
+      <p>Passwords are hashed, never stored in plain text. Seller-stocked credentials (the things you actually buy) are encrypted at rest. Sessions expire automatically after a configured period, and every payment-moving action is guarded server-side regardless of what the browser sends.</p>
+      <h3>Your choices</h3>
+      <p>Contact an administrator to request a copy of your data or account deletion. Deal-chat records tied to a completed or disputed transaction may be retained after deletion as the transaction's dispute record.</p>`,
+  },
+  refund: {
+    title: 'Refund Policy',
+    sub: 'When money moves back to the buyer, and how',
+    html: `
+      <h3>Before delivery</h3>
+      <p>If a seller never delivers, open a dispute from the deal screen. An administrator reviews it and can refund the escrowed amount in full — the seller receives nothing on a refunded deal, and no platform fee is ever charged on it.</p>
+      <h3>After delivery</h3>
+      <p>Once a seller marks an order delivered, you have an inspection window to confirm it's correct before releasing funds. If it isn't, dispute instead of confirming — confirming delivery releases the payout and cannot be undone from the buyer's side.</p>
+      <h3>How a refund is paid</h3>
+      <p>A deal funded from your Dot Wallet balance is refunded straight back to that balance the moment an admin approves it. A deal funded by a direct on-chain crypto payment is <b>not</b> automatically reversible — Dot Marketplace never holds your (or the seller's) private keys, so that refund is processed manually by an administrator off-platform after approval.</p>
+      <h3>Out-of-stock orders</h3>
+      <p>If a paid order for an auto-delivered item can't actually be fulfilled (the seller's stock ran out between listing and payment), it's automatically flagged for an administrator to refund — this is never left for you to notice and chase down.</p>
+      <h3>What isn't covered</h3>
+      <p>There is no self-service "cancel and refund" once a payment confirms — the whole point of escrow is that the money is locked, not sitting with either side to move at will. A completed, buyer-confirmed release cannot be reversed after the fact.</p>`,
+  },
+};
+
+function renderLegalDoc() {
+  const doc = LEGAL_DOCS[S.legalDoc] || LEGAL_DOCS.terms;
+  $('#legalTitle').textContent = doc.title;
+  $('#legalSub').textContent = doc.sub;
+  $('#legalBody').innerHTML = doc.html;
 }
 $('#pagenav').addEventListener('click', e => {
   const t = e.target.closest('[data-view]');
@@ -1664,7 +1759,14 @@ document.addEventListener('click', e => {
     return;
   }
   const g = e.target.closest('[data-go]');
-  if (g) { e.preventDefault(); go(g.dataset.go); }
+  if (g) {
+    e.preventDefault();
+    // A data-go link inside the auth modal (e.g. the "Terms" link in the
+    // signup footer) should dismiss the modal, not leave it floating over
+    // the page it just navigated to.
+    if (g.closest('#authOverlay')) closeAuth();
+    go(g.dataset.go, { doc: g.dataset.doc });
+  }
 }, true);
 window.addEventListener('hashchange', () => {
   const p = parseHashView();
@@ -3018,6 +3120,24 @@ document.addEventListener('click', e => {
   // Verifying a new signup is compulsory — the X button and clicking the
   // backdrop must not dismiss the modal while a code is pending.
   if (!pendingVerifyEmail && (e.target.closest('[data-ax]') || e.target === $('#authOverlay'))) closeAuth();
+  const si = e.target.closest('[data-seller-info]');
+  if (si) {
+    e.preventDefault();
+    // Seller accounts are invite-only, and the seller/admin portals live at a
+    // deliberately unguessable path (see lib/portal-access.js) — the public
+    // marketplace can never construct or link to that URL. A real invite
+    // email is the only legitimate way in, so that's the honest answer here
+    // rather than a link that either 404s or (worse) tries to guess a path
+    // that's supposed to stay secret.
+    toast('Seller accounts are invite-only — use the setup link from your invite email, or ask an administrator for one.', 'info');
+  }
+  const ct = e.target.closest('[data-contact]');
+  if (ct) {
+    e.preventDefault();
+    // No support inbox is wired up by default (an operator sets one for
+    // their own deployment) — a fake email here would be worse than none.
+    toast('For help with an order, use that deal\'s chat — it\'s reviewed by an arbiter if you open a dispute. For anything else, reach out through your account.', 'info');
+  }
   const m = $('#avaMenu');
   if (!m.hidden && !e.target.closest('#avaMenu') && !e.target.closest('#avaBtn')) m.hidden = true;
   const am = e.target.closest('[data-am]');

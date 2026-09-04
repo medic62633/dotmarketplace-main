@@ -281,9 +281,13 @@ function showListingForm(ctx, listings, existing) {
   wrap.hidden = false;
   const verified = !!ctx.state.profile?.verified;
   const cats = CATS.filter(c => c.id !== 'all');
-  let pendingImageDataUrl = null;
-  let currentImageUrl = existing?.image || null;
-  let removedImage = false;
+  const MAX_IMAGES = 6;
+  // Each item is { kind: 'existing', url } or { kind: 'new', dataUrl } — kept
+  // in that relative order (existing photos first, new ones appended) to
+  // match how the server's applyListingImages() actually assembles the
+  // saved gallery, so what the seller sees here is exactly what gets saved.
+  let galleryItems = (existing?.images?.length ? existing.images : (existing?.image ? [existing.image] : []))
+    .map(url => ({ kind: 'existing', url }));
 
   // Multiple price options on one listing (e.g. a single "Apple Gift Card"
   // listing the buyer picks $10/$50/$100 on), instead of one listing per
@@ -324,37 +328,42 @@ function showListingForm(ctx, listings, existing) {
     if (useVariants) renderVariantRows();
   }
 
-  function previewSrc() {
-    if (removedImage) return null;
-    if (pendingImageDataUrl) return pendingImageDataUrl;
-    return currentImageUrl;
-  }
-
   function renderPreview() {
-    const src = previewSrc();
     const box = $('#lfPreview');
     if (!box) return;
-    box.innerHTML = src
-      ? `<img src="${src.startsWith('data:') ? src : esc(src)}" alt="Product preview"><button type="button" class="btn btn-ghost btn-sm lf-rm-img" id="lfRemoveImg">Remove</button>`
-      : `<span class="lf-upload-ph">No image — category icon shown on marketplace</span>`;
-    $('#lfRemoveImg')?.addEventListener('click', () => {
-      pendingImageDataUrl = null;
-      removedImage = true;
-      renderPreview();
+    const thumbs = galleryItems.map((it, i) => {
+      const src = it.kind === 'new' ? it.dataUrl : esc(it.url);
+      return `
+        <div class="lf-photo${i === 0 ? ' lf-photo-cover' : ''}" data-pi="${i}">
+          <img src="${src}" alt="Product photo ${i + 1}">
+          ${i === 0 ? '<span class="lf-photo-badge">Cover</span>' : ''}
+          <button type="button" class="lf-photo-rm" aria-label="Remove photo">✕</button>
+        </div>`;
+    }).join('');
+    const addTile = galleryItems.length < MAX_IMAGES
+      ? `<button type="button" class="lf-photo-add" id="lfPickImg">+<span>Add photo</span></button>`
+      : '';
+    box.innerHTML = galleryItems.length || addTile
+      ? `<div class="lf-photos">${thumbs}${addTile}</div>`
+      : `<span class="lf-upload-ph">No photos — category icon shown on marketplace</span>`;
+    box.querySelectorAll('.lf-photo-rm').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = Number(btn.closest('[data-pi]').dataset.pi);
+        galleryItems.splice(i, 1);
+        renderPreview();
+      });
     });
+    $('#lfPickImg')?.addEventListener('click', () => $('#lfImage').click());
   }
 
   wrap.innerHTML = `
     <section class="panel seller-form" style="margin-top:16px">
       <h2>${existing ? 'Edit listing' : 'New listing'}</h2>
-      <label class="sf"><span>Product image</span>
+      <label class="sf"><span>Product photos</span>
         <div class="listing-upload">
-          <div class="listing-upload-preview" id="lfPreview"></div>
-          <input id="lfImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
-          <div class="listing-upload-actions">
-            <button type="button" class="btn btn-sec" id="lfPickImg">Choose image</button>
-            <span class="muted lf-upload-hint">JPEG, PNG, WebP or GIF · max 4 MB · auto-fitted on marketplace</span>
-          </div>
+          <div id="lfPreview"></div>
+          <input id="lfImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+          <span class="muted lf-upload-hint">JPEG, PNG, WebP or GIF · max 4 MB each · up to ${MAX_IMAGES} photos · first one is the cover shown on the marketplace</span>
         </div>
       </label>
       <label class="sf"><span>Category</span>
@@ -388,19 +397,23 @@ function showListingForm(ctx, listings, existing) {
     variantRows.push({ id: null, label: '', price: '' });
     renderVariantRows();
   });
-  $('#lfPickImg').addEventListener('click', () => $('#lfImage').click());
   $('#lfImage').addEventListener('change', () => {
-    const file = $('#lfImage').files?.[0];
-    if (!file) return;
-    if (file.size > 4 * 1024 * 1024) { toast('Image too large — max 4 MB', 'info'); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      pendingImageDataUrl = reader.result;
-      removedImage = false;
-      renderPreview();
-    };
-    reader.onerror = () => toast('Could not read image', 'info');
-    reader.readAsDataURL(file);
+    const files = Array.from($('#lfImage').files || []);
+    $('#lfImage').value = '';
+    if (!files.length) return;
+    const room = MAX_IMAGES - galleryItems.length;
+    if (room <= 0) { toast(`Up to ${MAX_IMAGES} photos per listing`, 'info'); return; }
+    if (files.length > room) toast(`Only added ${room} — up to ${MAX_IMAGES} photos per listing`, 'info');
+    for (const file of files.slice(0, room)) {
+      if (file.size > 4 * 1024 * 1024) { toast(`${file.name} is too large — max 4 MB`, 'info'); continue; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        galleryItems.push({ kind: 'new', dataUrl: reader.result });
+        renderPreview();
+      };
+      reader.onerror = () => toast(`Could not read ${file.name}`, 'info');
+      reader.readAsDataURL(file);
+    }
   });
 
   $('#lfCancel').addEventListener('click', () => { wrap.hidden = true; wrap.innerHTML = ''; });
@@ -421,9 +434,8 @@ function showListingForm(ctx, listings, existing) {
       body.price = parseFloat($('#lfPrice').value);
       body.variants = [];
     }
-    if (pendingImageDataUrl) body.imageData = pendingImageDataUrl;
-    else if (removedImage) body.image = null;
-    else if (currentImageUrl) body.image = currentImageUrl;
+    body.images = galleryItems.filter(it => it.kind === 'existing').map(it => it.url);
+    body.imagesData = galleryItems.filter(it => it.kind === 'new').map(it => it.dataUrl);
     try {
       if (existing) await api('/api/seller/listings/' + existing.id, { method: 'PUT', body });
       else await api('/api/seller/listings', { method: 'POST', body });
