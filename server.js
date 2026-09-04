@@ -616,7 +616,7 @@ const { createFavoriteStore } = require('./lib/favorite-store');
 const { autoDeliver } = require('./lib/stock-deliver');
 const mailer = require('./lib/mailer');
 const templates = require('./lib/email-templates');
-const notify = require('./lib/order-notify');
+const notify = require('./lib/notify');
 const { ensureListingUploadDir } = require('./lib/image-upload');
 const payments = require('./lib/payments');
 
@@ -881,8 +881,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
         const minutes = Math.round(verificationStore.CODE_TTL_MS / 60000);
         const r = await mailer.sendMail({
           to: id,
-          subject: `${issued.code} — your Dot Marketplace code`,
-          ...templates.verificationEmail({ name: user.name, code: issued.code, minutes }),
+          ...templates.verificationEmail({ name: user.name, code: issued.code, minutes, requestedAt: new Date() }),
         });
         if (!r.sent && !r.skipped) mailConfigured = false;
         // Dev convenience: surface the code when SMTP isn't configured OR the
@@ -912,7 +911,13 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
     const result = await verificationStore.verify(id, String(code).trim());
     if (result.verified) {
       const user = await store.getUser(id);
-      if (user && !user.emailVerified) { user.emailVerified = true; await store.putUser(user); }
+      if (user && !user.emailVerified) {
+        user.emailVerified = true;
+        await store.putUser(user);
+        // First verification only — `already` means the code was re-submitted
+        // and this would be a duplicate welcome.
+        if (!result.already) notify.welcome({ email: id, name: user.name });
+      }
       return res.json({ ok: true, verified: true, already: !!result.already });
     }
     if (result.expired) return res.status(410).json({ error: 'expired', msg: 'Code expired — request a new one' });
@@ -942,8 +947,7 @@ app.post('/api/auth/resend-code', authLimiter, async (req, res) => {
     const minutes = Math.round(verificationStore.CODE_TTL_MS / 60000);
     const r = await mailer.sendMail({
       to: id,
-      subject: `${issued.code} — your Dot Marketplace code`,
-      ...templates.verificationEmail({ name: user.name, code: issued.code, minutes }),
+      ...templates.verificationEmail({ name: user.name, code: issued.code, minutes, requestedAt: new Date() }),
     });
     const devCode = allowDevCode() && !r.sent ? issued.code : undefined;
     res.json({ ok: true, devCode });
@@ -1433,6 +1437,11 @@ app.post('/api/seller-invite/claim', authLimiter, async (req, res) => {
     }) || existingProfile;
 
     const seller = sellerStore.serializeSellerProfile(profile);
+    // Invite-only means claiming the link IS the moment a seller becomes
+    // verified (the profile is provisioned verified just above), so this is
+    // where the "you're verified" email belongs. The admin verify route is
+    // the re-verify path and only mails when it actually changes state.
+    notify.sellerApproved({ email: user._id, name: user.name });
     res.json({ token: user.token, user: userPayload(user, seller) });
   } catch (err) {
     console.error('invite claim error:', err.message);
