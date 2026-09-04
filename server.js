@@ -173,17 +173,22 @@ app.use(express.json({
  * (uptime check, PM2, a cron alert) actually finds out when Mongo is down
  * instead of everything looking fine right up until a request fails. */
 app.get('/healthz', async (req, res) => {
+  // Echoes INSTANCE_ID when one is set, so a caller can confirm WHICH process
+  // answered — behind a load balancer, or in the test harness, where a server
+  // that failed to bind its port would otherwise be indistinguishable from a
+  // different server already listening on it.
+  const instance = process.env.INSTANCE_ID || null;
   if (memory) {
     // Working, but explicitly flagged: this is the non-durable dev store —
     // a monitor should treat this as a warning if seen in production.
-    return res.status(200).json({ ok: true, db: 'memory', durable: false, uptime: Math.round(process.uptime()), ts: Date.now() });
+    return res.status(200).json({ ok: true, db: 'memory', durable: false, instance, uptime: Math.round(process.uptime()), ts: Date.now() });
   }
   if (!mongoClient) {
-    return res.status(503).json({ ok: false, db: 'down', uptime: Math.round(process.uptime()), ts: Date.now() });
+    return res.status(503).json({ ok: false, db: 'down', instance, uptime: Math.round(process.uptime()), ts: Date.now() });
   }
   try {
     await mongoClient.db('dotmarket').command({ ping: 1 }, { timeoutMS: 4000 });
-    res.status(200).json({ ok: true, db: 'mongo', durable: true, uptime: Math.round(process.uptime()), ts: Date.now() });
+    res.status(200).json({ ok: true, db: 'mongo', durable: true, instance, uptime: Math.round(process.uptime()), ts: Date.now() });
   } catch (err) {
     console.error('⚠ /healthz: MongoDB ping failed —', err.message);
     res.status(503).json({ ok: false, db: 'mongo', durable: true, error: err.message, uptime: Math.round(process.uptime()), ts: Date.now() });
@@ -1491,7 +1496,7 @@ connectDb().then(async () => {
     const removed = sweepChatImages(keep);
     if (removed) console.log('   Cleaned ' + removed + ' orphaned chat image(s).');
   } catch (_) {}
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Dot Marketplace → http://localhost:${PORT}`);
     console.log('   Marketplace:  http://localhost:' + PORT + '/');
     if (portalAccess.disabled) {
@@ -1506,6 +1511,18 @@ connectDb().then(async () => {
     }
     console.log('   Admin: ' + (process.env.ADMIN_EMAIL || 'admin@dot.market'));
     console.log('   Payments: ' + payments.provider() + (payments.isConfigured() ? ' (configured)' : ' (not configured — wallet only)'));
+  });
+  // Without this, a port already in use raises an unhandled 'error' event and
+  // the process dies with a bare stack trace — and anything probing the port
+  // gets a healthy answer from whatever else is listening there, which looks
+  // exactly like a successful start.
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use — set PORT to a free port.`);
+    } else {
+      console.error('Server failed to start:', err.message);
+    }
+    process.exit(1);
   });
 }).catch(err => {
   console.error('Startup failed:', err.message);
