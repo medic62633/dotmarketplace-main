@@ -664,11 +664,27 @@ function closeListing() {
   if (lastFocus) lastFocus.focus();
 }
 
+/* The deal id is the key the SERVER stores this purchase under — the escrow
+ * _id, the payment orderId, the deal's conversation, and the credential-stock
+ * reservation all hang off it. So it has to be unique across every buyer on
+ * the platform, not just unique within this browser.
+ *
+ * It used to be 'DK-' + a random 1000..9999, deduped only against this
+ * client's own DEALS list: 9,000 values shared by everyone. Two unrelated
+ * buyers collided in ordinary use (~50% odds once ~112 deals exist), and the
+ * second one's purchase silently charged their wallet while the escrow,
+ * payment record, and seller-side sale all stayed attached to the first
+ * buyer's deal — money out, nothing to release, dispute, or refund.
+ *
+ * 64 bits of CSPRNG instead, so honest clients never collide. The server no
+ * longer trusts that either: it binds each deal id to the first buyer who
+ * uses it and rejects anyone else (see lib/wallet-routes.js and
+ * lib/payment-routes.js), so a forged or guessed id can't reach someone
+ * else's order. */
 function newDealId() {
-  let id;
-  do { id = 'DK-' + (1000 + Math.floor(Math.random() * 9000)); }
-  while (DEALS.some(d => d.id === id));
-  return id;
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return 'DK-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function buy(id, variantId) {
@@ -901,7 +917,12 @@ async function walletPay(deal) {
     const d = await r.json().catch(() => ({}));
     if (r.status === 401) return { unauthorized: true };
     if (r.status === 402) return { insufficient: true, balance: d.balance };
-    if (r.status === 409) return { cryptoPending: true, error: d.msg || d.error };
+    // 409 covers two very different cases now: this deal already has a live
+    // crypto invoice (re-open that checkout), or its order id is already in
+    // use by another buyer (a forged/raced id — see lib/order-owner.js), which
+    // must surface as a plain error instead of bouncing the buyer into a
+    // crypto checkout for someone else's order.
+    if (r.status === 409 && d.error === 'crypto_pending') return { cryptoPending: true, error: d.msg || d.error };
     if (!r.ok) return { error: d.msg || d.error || 'Payment failed' };
     return { balance: d.wallet?.balance };
   } catch (e) {
